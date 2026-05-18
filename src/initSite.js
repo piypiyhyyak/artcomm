@@ -527,7 +527,7 @@ export default function initSite() {
   if (videoPlayBtn) {
     videoPlayBtn.addEventListener("click", function () {
       if (!hasVideoSource(msVideo)) {
-        setVideoPlaceholderMessage("Видео не найдено. Положите файл в public/assets и укажите путь в теге <video>.");
+        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4 и укажите этот путь в теге <video>.");
         return;
       }
       tryPlayVideo();

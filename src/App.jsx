@@ -39,7 +39,7 @@ const homeMarkup = String.raw`
       <button data-scroll="#iks">Методология</button>
       <button data-scroll="#expert">Наши эксперты</button>
       <button data-scroll="#contacts">Контакты</button>
-      <a href="/about">Сведения об организации</a>
+      <a href="/?page=about">Сведения об организации</a>
     </nav>
   </aside>
 
@@ -973,7 +973,11 @@ const aboutMarkup = String.raw`
 `;
 
 export default function App() {
-  const isAboutPage = typeof window !== 'undefined' && /^\/about\/?$/.test(window.location.pathname);
+  const isAboutPage = typeof window !== 'undefined' && (() => {
+    const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+    const page = new URLSearchParams(window.location.search).get('page');
+    return pathname === '/about' || pathname === '/documents' || page === 'about' || page === 'documents';
+  })();
 
   useEffect(() => {
     if (!isAboutPage) {

@@ -1,4 +1,22 @@
-public/assets/*.mp4
-public/assets/*.mp4
-public/assets/*.mp4
+node_modules/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# Temporary debug artifacts
+tmp_*
+tmp-*
+
+# Large videos should stay outside git
 *.mp4
