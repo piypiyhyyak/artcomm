@@ -82,6 +82,7 @@ const aboutMarkup = String.raw`
         <article class="about-card">
           <ul class="about-doc-list">
             <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Устав организации</a></li>
+            <li><a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования</a></li>
             <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Выписка ЕГРЮЛ</a></li>
             <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Свидетельство ИНН</a></li>
             <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Свидетельство ОГРН</a></li>
@@ -102,29 +103,41 @@ const aboutMarkup = String.raw`
           <h2>Образование</h2>
         </header>
         <article class="about-card">
-          <p class="about-note">Описание образовательных программ будет уточнено заказчиком. Ниже размещена обязательная таблица с 11 столбцами.</p>
+          <p class="about-note">Раздел заполнен на основании утверждённой дополнительной профессиональной программы повышения квалификации.</p>
+          <div class="about-links-list">
+            <a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования (PDF)</a>
+          </div>
           <div class="about-table-wrap">
             <table class="about-table about-table-wide">
               <thead>
                 <tr>
-                  <th>Колонка 1</th>
-                  <th>Колонка 2</th>
-                  <th>Колонка 3</th>
-                  <th>Колонка 4</th>
-                  <th>Колонка 5</th>
-                  <th>Колонка 6</th>
-                  <th>Колонка 7</th>
-                  <th>Колонка 8</th>
-                  <th>Колонка 9</th>
-                  <th>Колонка 10</th>
-                  <th>Колонка 11</th>
+                  <th>Вид программы</th>
+                  <th>Наименование программы</th>
+                  <th>Целевая аудитория</th>
+                  <th>Форма обучения</th>
+                  <th>Формат реализации</th>
+                  <th>Трудоёмкость, ч</th>
+                  <th>Контактная работа, ч</th>
+                  <th>Самостоятельная работа, ч</th>
+                  <th>Срок освоения</th>
+                  <th>Формы аттестации</th>
+                  <th>Документ по итогам</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-                <tr><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-                <tr><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-                <tr><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                <tr>
+                  <td>Дополнительная профессиональная программа (повышение квалификации)</td>
+                  <td>«Социальная архитектура и развитие городских сообществ: проектные и коммуникационные компетенции»</td>
+                  <td>Лица с высшим или средним специальным образованием, представители городских сообществ атомных городов</td>
+                  <td>Очно-заочная, с применением дистанционных технологий</td>
+                  <td>Платформа Getcourse, онлайн-сессии и групповые занятия (Zoom/Webinar)</td>
+                  <td>285</td>
+                  <td>75</td>
+                  <td>215</td>
+                  <td>14 недель</td>
+                  <td>Промежуточная аттестация: проверка проектной работы; итоговая аттестация: тестирование</td>
+                  <td>Удостоверение о повышении квалификации установленного образца</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -222,9 +235,7 @@ const aboutMarkup = String.raw`
           <article class="about-card">
             <h3>Образовательные программы</h3>
             <ul class="about-program-list">
-              <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Программа 1 (заглушка)</a></li>
-              <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Программа 2 (заглушка)</a></li>
-              <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Программа 3 (заглушка)</a></li>
+              <li><a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования (повышение квалификации)</a></li>
             </ul>
           </article>
         </div>
@@ -256,13 +267,22 @@ const aboutMarkup = String.raw`
           </section>
 
           <section class="footer-col footer-col-docs">
-            <h3 class="footer-title">Контакты</h3>
-            <div class="footer-links footer-links-contacts">
-              <a href="mailto:info@artcommrf.ru">info@artcommrf.ru</a>
-              <a href="tel:+79503545558">+7 (950) 354-55-58</a>
-              <a href="https://t.me" target="_blank" rel="noopener noreferrer">Написать в Telegram</a>
-              <a href="https://max.ru" target="_blank" rel="noopener noreferrer">Написать в Max</a>
-              <a href="/">Вернуться на главную</a>
+            <div class="footer-subsection">
+              <h3 class="footer-title">Документы</h3>
+              <nav class="footer-links" aria-label="Документы страницы">
+                <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Устав организации</a>
+                <a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования</a>
+              </nav>
+            </div>
+            <div class="footer-subsection">
+              <h3 class="footer-title">Контакты</h3>
+              <div class="footer-links footer-links-contacts">
+                <a href="mailto:info@artcommrf.ru">info@artcommrf.ru</a>
+                <a href="tel:+79503545558">+7 (950) 354-55-58</a>
+                <a href="https://t.me" target="_blank" rel="noopener noreferrer">Написать в Telegram</a>
+                <a href="https://max.ru" target="_blank" rel="noopener noreferrer">Написать в Max</a>
+                <a href="/">Вернуться на главную</a>
+              </div>
             </div>
           </section>
         </div>

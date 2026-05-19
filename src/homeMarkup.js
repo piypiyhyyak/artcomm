@@ -523,6 +523,7 @@ const homeMarkup = String.raw`
               <h3 class="footer-title">Документы</h3>
               <nav class="footer-links" aria-label="Документы">
                 <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Устав организации</a>
+                <a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования</a>
               </nav>
             </div>
             <div class="footer-subsection">
