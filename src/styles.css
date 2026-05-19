@@ -1160,6 +1160,10 @@ h3 {
   z-index: 2;
 }
 
+.ms-video-stage.is-video-ready .video-placeholder {
+  display: none !important;
+}
+
 .play-btn {
   width: 74px;
   height: 74px;

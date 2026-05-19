@@ -15,6 +15,7 @@ export default function initSite() {
 
   const heroSection = $("#hero");
   const commonSection = $("#common");
+  const expertSection = $("#expert");
   const heroSlides = $$(".hero-slide");
   const heroDotsWrap = $("#heroDots");
   const prevSlideBtn = $("#prevSlide");
@@ -95,6 +96,9 @@ export default function initSite() {
   let activeDiamondPoint = null;
   let diamondTooltipTimer = null;
   let diamondPointEntries = [];
+  let diamondChartInitialized = false;
+  let trustedNetworkInitialized = false;
+  let videoPlayAttemptId = 0;
 
   function syncHeaderVisualState() {
     const shouldBeSolid =
@@ -184,16 +188,84 @@ export default function initSite() {
     "/assets/hero-2.jpeg",
     "/assets/hero-1.jpeg"
   ];
+  const networkInfo =
+    typeof navigator === "object"
+      ? navigator.connection || navigator.mozConnection || navigator.webkitConnection || null
+      : null;
+  const connectionType =
+    networkInfo && typeof networkInfo.effectiveType === "string"
+      ? networkInfo.effectiveType.toLowerCase()
+      : "";
+  const isSlowNetwork =
+    connectionType === "slow-2g" ||
+    connectionType.includes("2g") ||
+    connectionType.includes("3g");
+  const savesData = Boolean(networkInfo && networkInfo.saveData);
+  const isTouchLikeDevice =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+  const isLiteMode = savesData || isSlowNetwork || isTouchLikeDevice;
+  const allowAutoVideoPlayback = !(savesData || isSlowNetwork || isTouchLikeDevice);
+  const loadedHeroSlideIndexes = new Set();
+  let queuedHeroWarmup = false;
+
+  function normalizeHeroIndex(index) {
+    const size = heroSlides.length;
+    if (!size) {
+      return 0;
+    }
+    return ((index % size) + size) % size;
+  }
+
+  function paintHeroSlide(index) {
+    if (!heroSlides.length) {
+      return;
+    }
+
+    const safeIndex = normalizeHeroIndex(index);
+    if (loadedHeroSlideIndexes.has(safeIndex)) {
+      return;
+    }
+
+    const image = photoPool[safeIndex % photoPool.length];
+    heroSlides[safeIndex].style.backgroundImage = "url('" + image + "')";
+    loadedHeroSlideIndexes.add(safeIndex);
+  }
+
+  function warmupHeroSlides() {
+    if (queuedHeroWarmup || heroSlides.length < 2) {
+      return;
+    }
+
+    queuedHeroWarmup = true;
+    const warmup = function () {
+      if (isLiteMode) {
+        paintHeroSlide(heroIndex + 1);
+        paintHeroSlide(heroIndex + 2);
+        return;
+      }
+
+      heroSlides.forEach(function (_, index) {
+        paintHeroSlide(index);
+      });
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(warmup, { timeout: 1500 });
+      return;
+    }
+
+    setTimeout(warmup, 420);
+  }
 
   function initHeroBackgrounds() {
     if (!heroSlides.length) {
       return;
     }
 
-    heroSlides.forEach(function (slide, index) {
-      const image = photoPool[index % photoPool.length];
-      slide.style.backgroundImage = "url('" + image + "')";
-    });
+    paintHeroSlide(0);
+    paintHeroSlide(1);
+    window.addEventListener("load", warmupHeroSlides, { once: true });
   }
 
   function renderHeroDots() {
@@ -210,7 +282,10 @@ export default function initSite() {
   }
 
   function goToSlide(nextIndex) {
-    heroIndex = (nextIndex + heroSlides.length) % heroSlides.length;
+    heroIndex = normalizeHeroIndex(nextIndex);
+
+    paintHeroSlide(heroIndex);
+    paintHeroSlide(heroIndex + 1);
 
     heroSlides.forEach(function (slide, index) {
       slide.classList.toggle("is-active", index === heroIndex);
@@ -487,7 +562,35 @@ export default function initSite() {
     if (!video) {
       return false;
     }
-    return Boolean(video.currentSrc || video.src || $("source", video));
+    const source = $("source", video);
+    const sourceSrc = source ? source.getAttribute("src") || source.dataset.src : "";
+    const videoSrc = video.getAttribute("src") || video.dataset.src || "";
+    return Boolean(video.currentSrc || videoSrc || sourceSrc);
+  }
+
+  function hydrateVideoSource(video) {
+    if (!video) {
+      return false;
+    }
+
+    const source = $("source", video);
+    let changed = false;
+
+    if (source && !source.getAttribute("src") && source.dataset.src) {
+      source.setAttribute("src", source.dataset.src);
+      changed = true;
+    }
+
+    if (!source && !video.getAttribute("src") && video.dataset.src) {
+      video.setAttribute("src", video.dataset.src);
+      changed = true;
+    }
+
+    if (changed) {
+      video.load();
+    }
+
+    return hasVideoSource(video);
   }
 
   function setVideoPlaceholderMessage(message) {
@@ -500,19 +603,69 @@ export default function initSite() {
     }
   }
 
+  function showVideoPlaceholder(message) {
+    if (!videoPlaceholder) {
+      return;
+    }
+    if (msVideo && (!msVideo.paused || msVideo.currentTime > 0.02)) {
+      hideVideoPlaceholder();
+      return;
+    }
+    if (message) {
+      setVideoPlaceholderMessage(message);
+    }
+    if (videoWrap) {
+      videoWrap.classList.remove("is-video-ready");
+    }
+    videoPlaceholder.style.display = "grid";
+    videoPlaceholder.setAttribute("aria-hidden", "false");
+  }
+
+  function hideVideoPlaceholder() {
+    if (!videoPlaceholder) {
+      return;
+    }
+    if (videoWrap) {
+      videoWrap.classList.add("is-video-ready");
+    }
+    videoPlaceholder.style.display = "none";
+    videoPlaceholder.setAttribute("aria-hidden", "true");
+  }
+
   function tryPlayVideo() {
-    if (!msVideo || !hasVideoSource(msVideo)) {
+    if (!msVideo) {
+      return;
+    }
+
+    const hasSource = hydrateVideoSource(msVideo);
+    if (!hasSource) {
+      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 и укажите этот путь в теге <video>.");
       return;
     }
 
     msVideo.muted = true;
     msVideo.playsInline = true;
+    const currentAttempt = ++videoPlayAttemptId;
     const attempt = msVideo.play();
+    if (attempt && typeof attempt.then === "function") {
+      attempt.then(function () {
+        if (currentAttempt !== videoPlayAttemptId) {
+          return;
+        }
+        hideVideoPlaceholder();
+      });
+    }
     if (attempt && typeof attempt.catch === "function") {
       attempt.catch(function () {
-        videoPlaceholder.style.display = "grid";
+        if (currentAttempt !== videoPlayAttemptId) {
+          return;
+        }
+        if (!msVideo.paused || msVideo.currentTime > 0.02) {
+          hideVideoPlaceholder();
+          return;
+        }
         msVideo.removeAttribute("controls");
-        setVideoPlaceholderMessage("Текущий браузер не смог автоматически воспроизвести видео.");
+        showVideoPlaceholder("Текущий браузер не смог автоматически воспроизвести видео.");
       });
     }
   }
@@ -526,8 +679,8 @@ export default function initSite() {
 
   if (videoPlayBtn) {
     videoPlayBtn.addEventListener("click", function () {
-      if (!hasVideoSource(msVideo)) {
-        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4 и укажите этот путь в теге <video>.");
+      if (!hydrateVideoSource(msVideo)) {
+        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 и укажите этот путь в теге <video>.");
         return;
       }
       tryPlayVideo();
@@ -536,19 +689,21 @@ export default function initSite() {
   }
 
   if (msVideo) {
-    function revealVideoFrame() {
-      if (msVideo.currentTime <= 0.02) {
+    function syncVideoPlaceholderState() {
+      if (msVideo.currentTime <= 0.02 && msVideo.paused && msVideo.readyState < 2) {
         return;
       }
-      videoPlaceholder.style.display = "none";
-      msVideo.removeEventListener("timeupdate", revealVideoFrame);
+      hideVideoPlaceholder();
     }
 
-    msVideo.addEventListener("timeupdate", revealVideoFrame);
+    msVideo.addEventListener("play", syncVideoPlaceholderState);
+    msVideo.addEventListener("playing", syncVideoPlaceholderState);
+    msVideo.addEventListener("loadeddata", syncVideoPlaceholderState);
+    msVideo.addEventListener("canplay", syncVideoPlaceholderState);
+    msVideo.addEventListener("timeupdate", syncVideoPlaceholderState);
 
     msVideo.addEventListener("error", function () {
-      videoPlaceholder.style.display = "grid";
-      setVideoPlaceholderMessage("Формат не поддержан браузером. Конвертируйте ролик в MP4 (H.264/AAC).");
+      showVideoPlaceholder("Формат не поддержан браузером. Конвертируйте ролик в MP4 (H.264/AAC).");
     });
   }
 
@@ -685,7 +840,9 @@ export default function initSite() {
   const videoObserver = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
       if (entry.isIntersecting) {
-        tryPlayVideo();
+        if (allowAutoVideoPlayback) {
+          tryPlayVideo();
+        }
       } else {
         pauseVideo();
       }
@@ -920,9 +1077,10 @@ export default function initSite() {
   }
 
   function initDiamondChart() {
-    if (!diamondChart || !diamondSvgHost) {
+    if (diamondChartInitialized || !diamondChart || !diamondSvgHost) {
       return;
     }
+    diamondChartInitialized = true;
 
     fetch("/assets/chart.svg")
       .then(function (response) {
@@ -989,17 +1147,44 @@ export default function initSite() {
     });
   }
 
-  initDiamondChart();
+  function queueDiamondChartInit() {
+    if (!diamondChart || diamondChartInitialized) {
+      return;
+    }
+
+    if (typeof window.IntersectionObserver !== "function") {
+      initDiamondChart();
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      function (entries) {
+        const isVisible = entries.some(function (entry) {
+          return entry.isIntersecting;
+        });
+        if (!isVisible) {
+          return;
+        }
+        initDiamondChart();
+        observer.disconnect();
+      },
+      { root: null, rootMargin: "320px 0px", threshold: 0.01 }
+    );
+
+    observer.observe(diamondChart);
+  }
 
   const expertPhotos = [
-    "/assets/expert-1.png",
-    "/assets/expert-2.png",
-    "/assets/expert-3.png",
-    "/assets/expert-4.png"
+    "/assets/expert-1.jpg",
+    "/assets/expert-2.jpg",
+    "/assets/expert-3.jpg",
+    "/assets/expert-4.jpg"
   ];
 
   let activeExpertPhotoIndex = 0;
   const EXPERT_AUTOPLAY_DELAY = 6000;
+  let expertGalleryReady = false;
+  const preloadedExpertSources = new Set();
 
   function normalizeExpertIndex(index) {
     const size = expertPhotos.length;
@@ -1007,6 +1192,36 @@ export default function initSite() {
       return 0;
     }
     return ((index % size) + size) % size;
+  }
+
+  function preloadExpertPhoto(index) {
+    const safeIndex = normalizeExpertIndex(index);
+    const source = expertPhotos[safeIndex];
+    if (!source || preloadedExpertSources.has(source)) {
+      return;
+    }
+
+    const img = new Image();
+    img.decoding = "async";
+    img.src = source;
+    preloadedExpertSources.add(source);
+  }
+
+  function paintExpertThumbs(activeIndex) {
+    if (!expertThumbs.length) {
+      return;
+    }
+
+    const hasVisibleThumbs = expertThumbs.some(function (thumb) {
+      return window.getComputedStyle(thumb).display !== "none";
+    });
+
+    expertThumbs.forEach(function (thumb, thumbIndex) {
+      thumb.classList.toggle("is-active", thumbIndex === activeIndex);
+      if (hasVisibleThumbs && !thumb.style.backgroundImage) {
+        thumb.style.backgroundImage = "url('" + expertPhotos[thumbIndex] + "')";
+      }
+    });
   }
 
   function setExpertPhoto(index) {
@@ -1023,10 +1238,9 @@ export default function initSite() {
       expertMainPhoto.style.opacity = "1";
     }, 120);
 
-    expertThumbs.forEach(function (thumb, thumbIndex) {
-      thumb.classList.toggle("is-active", thumbIndex === safeIndex);
-      thumb.style.backgroundImage = "url('" + expertPhotos[thumbIndex] + "')";
-    });
+    paintExpertThumbs(safeIndex);
+    preloadExpertPhoto(safeIndex + 1);
+    preloadExpertPhoto(safeIndex - 1);
 
     if (expertPhotoCurrent) {
       expertPhotoCurrent.textContent = String(safeIndex + 1).padStart(2, "0");
@@ -1042,7 +1256,7 @@ export default function initSite() {
   }
 
   function startExpertAutoTimer() {
-    if (!expertMainPhoto || expertPhotos.length < 2 || expertAutoTimer) {
+    if (!expertGalleryReady || !expertMainPhoto || expertPhotos.length < 2 || expertAutoTimer) {
       return;
     }
 
@@ -1093,6 +1307,38 @@ export default function initSite() {
     }
     startExpertAutoTimer();
   });
+
+  function initExpertGallery() {
+    if (expertGalleryReady || !expertMainPhoto || !expertPhotos.length) {
+      return;
+    }
+
+    expertGalleryReady = true;
+    setExpertPhoto(0);
+    startExpertAutoTimer();
+  }
+
+  if (expertSection && typeof window.IntersectionObserver === "function") {
+    const expertObserver = new IntersectionObserver(
+      function (entries) {
+        const isVisible = entries.some(function (entry) {
+          return entry.isIntersecting;
+        });
+
+        if (!isVisible) {
+          return;
+        }
+
+        initExpertGallery();
+        expertObserver.disconnect();
+      },
+      { root: null, rootMargin: "300px 0px", threshold: 0.01 }
+    );
+
+    expertObserver.observe(expertSection);
+  } else {
+    initExpertGallery();
+  }
 
   const expertMobileFlowQuery = window.matchMedia("(max-width: 600px)");
   const expertMediaOriginalParent = expertResetMedia ? expertResetMedia.parentElement : null;
@@ -1546,7 +1792,39 @@ export default function initSite() {
     }
   }
 
-  initTrustedNetwork();
+  function queueTrustedNetworkInit() {
+    if (trustedNetworkInitialized) {
+      return;
+    }
+
+    const shouldSkipObserver =
+      !trustedNetwork ||
+      typeof window.IntersectionObserver !== "function" ||
+      window.matchMedia("(max-width: 900px)").matches;
+
+    if (shouldSkipObserver) {
+      trustedNetworkInitialized = true;
+      initTrustedNetwork();
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      function (entries) {
+        const isVisible = entries.some(function (entry) {
+          return entry.isIntersecting;
+        });
+        if (!isVisible) {
+          return;
+        }
+        trustedNetworkInitialized = true;
+        initTrustedNetwork();
+        observer.disconnect();
+      },
+      { root: null, rootMargin: "360px 0px", threshold: 0.01 }
+    );
+
+    observer.observe(trustedNetwork);
+  }
 
   const contactForm = $("#contactForm");
   if (contactForm) {
@@ -1567,7 +1845,8 @@ export default function initSite() {
   renderHeroDots();
   goToSlide(0);
   startHeroTimer();
-  setExpertPhoto(0);
-  startExpertAutoTimer();
+  warmupHeroSlides();
+  queueDiamondChartInit();
+  queueTrustedNetworkInit();
   syncHeaderVisualState();
 }
