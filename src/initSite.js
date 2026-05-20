@@ -1,3 +1,5 @@
+import diamondChartSvg from "./assets/chart.svg?raw";
+
 export default function initSite() {
   if (window.__artcommSiteInitialized) {
     return;
@@ -1082,30 +1084,22 @@ export default function initSite() {
     }
     diamondChartInitialized = true;
 
-    fetch("/assets/chart.svg")
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("Не удалось загрузить chart.svg");
-        }
-        return response.text();
-      })
-      .then(function (svgText) {
-        diamondSvgHost.innerHTML = svgText;
-        const svgRoot = $("svg", diamondSvgHost);
-        if (!svgRoot) {
-          return;
-        }
+    try {
+      diamondSvgHost.innerHTML = diamondChartSvg;
+      const svgRoot = $("svg", diamondSvgHost);
+      if (!svgRoot) {
+        throw new Error("SVG диаграммы не найден в шаблоне");
+      }
 
-        cleanupDiamondSvg(svgRoot);
-        createDiamondHotspots(svgRoot);
+      cleanupDiamondSvg(svgRoot);
+      createDiamondHotspots(svgRoot);
 
-        if (diamondPointEntries.length) {
-          activateDiamondEntry(diamondPointEntries[0], false);
-        }
-      })
-      .catch(function () {
-        diamondSvgHost.innerHTML = "<img src='/assets/chart.svg' alt='Диаграмма ИКС'>";
-      });
+      if (diamondPointEntries.length) {
+        activateDiamondEntry(diamondPointEntries[0], false);
+      }
+    } catch (_) {
+      diamondSvgHost.innerHTML = "<img src='/assets/chart.svg' alt='Диаграмма ИКС'>";
+    }
 
     iksAxisItems.forEach(function (item) {
       item.addEventListener("mouseenter", function () {
