@@ -570,6 +570,39 @@ export default function initSite() {
     return Boolean(video.currentSrc || videoSrc || sourceSrc);
   }
 
+  function switchVideoSourceToFallback(video) {
+    if (!video) {
+      return false;
+    }
+
+    const source = $("source", video);
+    const fallbackSrc =
+      (source && source.dataset ? source.dataset.fallbackSrc : "") ||
+      video.dataset.fallbackSrc ||
+      "";
+
+    if (!fallbackSrc) {
+      return false;
+    }
+
+    if (source) {
+      const currentSrc = source.getAttribute("src") || source.dataset.src || "";
+      if (currentSrc === fallbackSrc) {
+        return false;
+      }
+      source.setAttribute("src", fallbackSrc);
+    } else {
+      const currentSrc = video.getAttribute("src") || video.dataset.src || "";
+      if (currentSrc === fallbackSrc) {
+        return false;
+      }
+      video.setAttribute("src", fallbackSrc);
+    }
+
+    video.load();
+    return true;
+  }
+
   function hydrateVideoSource(video) {
     if (!video) {
       return false;
@@ -641,7 +674,7 @@ export default function initSite() {
 
     const hasSource = hydrateVideoSource(msVideo);
     if (!hasSource) {
-      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4 и укажите этот путь в теге <video>.");
+      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 или /assets/gimn-ed-zy9mar.mp4.");
       return;
     }
 
@@ -654,12 +687,20 @@ export default function initSite() {
         if (currentAttempt !== videoPlayAttemptId) {
           return;
         }
-        hideVideoPlaceholder();
+        if (!msVideo.paused || msVideo.currentTime > 0.02) {
+          hideVideoPlaceholder();
+          return;
+        }
+        showVideoPlaceholder("Нажмите Play, чтобы запустить видео.");
       });
     }
     if (attempt && typeof attempt.catch === "function") {
       attempt.catch(function () {
         if (currentAttempt !== videoPlayAttemptId) {
+          return;
+        }
+        if (switchVideoSourceToFallback(msVideo)) {
+          tryPlayVideo();
           return;
         }
         if (!msVideo.paused || msVideo.currentTime > 0.02) {
@@ -682,7 +723,7 @@ export default function initSite() {
   if (videoPlayBtn) {
     videoPlayBtn.addEventListener("click", function () {
       if (!hydrateVideoSource(msVideo)) {
-        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4 и укажите этот путь в теге <video>.");
+        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 или /assets/gimn-ed-zy9mar.mp4.");
         return;
       }
       tryPlayVideo();
@@ -705,6 +746,10 @@ export default function initSite() {
     msVideo.addEventListener("timeupdate", syncVideoPlaceholderState);
 
     msVideo.addEventListener("error", function () {
+      if (switchVideoSourceToFallback(msVideo)) {
+        tryPlayVideo();
+        return;
+      }
       showVideoPlaceholder("Формат не поддержан браузером. Конвертируйте ролик в MP4 (H.264/AAC).");
     });
   }
@@ -839,6 +884,9 @@ export default function initSite() {
     barsObserver.observe(loyaltyBars);
   }
 
+  const videoObserverThreshold =
+    typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches ? 0.25 : 0.55;
+
   const videoObserver = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
       if (entry.isIntersecting) {
@@ -849,7 +897,7 @@ export default function initSite() {
         pauseVideo();
       }
     });
-  }, { threshold: 0.55 });
+  }, { threshold: videoObserverThreshold });
 
   if (videoWrap) {
     videoObserver.observe(videoWrap);

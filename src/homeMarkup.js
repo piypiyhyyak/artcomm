@@ -173,8 +173,8 @@ const homeMarkup = String.raw`
 
       <div class="ms-pin-shell" id="msPinShell">
         <article class="ms-video-stage" id="videoWrap">
-          <video id="msVideo" playsinline muted loop preload="none" poster="" aria-label="Видео о формате МедиаСтанции">
-            <source data-src="/assets/gimn-ed-zy9mar.mp4" type="video/mp4">
+          <video id="msVideo" playsinline webkit-playsinline muted loop autoplay preload="metadata" poster="" aria-label="Видео о формате МедиаСтанции">
+            <source data-src="/assets/gimn-ed-zy9mar-lite.mp4" data-fallback-src="/assets/gimn-ed-zy9mar.mp4" type="video/mp4">
           </video>
           <div class="video-placeholder" id="videoPlaceholder">
             <button class="play-btn" id="videoPlay" aria-label="Запустить видео">▶</button>
