@@ -207,7 +207,7 @@ export default function initSite() {
     typeof window.matchMedia === "function" &&
     window.matchMedia("(pointer: coarse)").matches;
   const isLiteMode = savesData || isSlowNetwork || isTouchLikeDevice;
-  const allowAutoVideoPlayback = !(savesData || isSlowNetwork || isTouchLikeDevice);
+  const allowAutoVideoPlayback = !(savesData || isSlowNetwork);
   const loadedHeroSlideIndexes = new Set();
   let queuedHeroWarmup = false;
 
@@ -641,7 +641,7 @@ export default function initSite() {
 
     const hasSource = hydrateVideoSource(msVideo);
     if (!hasSource) {
-      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 и укажите этот путь в теге <video>.");
+      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4 и укажите этот путь в теге <video>.");
       return;
     }
 
@@ -682,7 +682,7 @@ export default function initSite() {
   if (videoPlayBtn) {
     videoPlayBtn.addEventListener("click", function () {
       if (!hydrateVideoSource(msVideo)) {
-        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 и укажите этот путь в теге <video>.");
+        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4 и укажите этот путь в теге <video>.");
         return;
       }
       tryPlayVideo();
@@ -692,7 +692,7 @@ export default function initSite() {
 
   if (msVideo) {
     function syncVideoPlaceholderState() {
-      if (msVideo.currentTime <= 0.02 && msVideo.paused && msVideo.readyState < 2) {
+      if (msVideo.paused && msVideo.currentTime <= 0.02) {
         return;
       }
       hideVideoPlaceholder();
