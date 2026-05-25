@@ -674,7 +674,7 @@ export default function initSite() {
 
     const hasSource = hydrateVideoSource(msVideo);
     if (!hasSource) {
-      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 или /assets/gimn-ed-zy9mar.mp4.");
+      setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4.");
       return;
     }
 
@@ -723,7 +723,7 @@ export default function initSite() {
   if (videoPlayBtn) {
     videoPlayBtn.addEventListener("click", function () {
       if (!hydrateVideoSource(msVideo)) {
-        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar-lite.mp4 или /assets/gimn-ed-zy9mar.mp4.");
+        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4.");
         return;
       }
       tryPlayVideo();
