@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
 import homeMarkup from './homeMarkup';
+import { applyPublishedCms } from './cms/domApply';
 
 export default function HomeApp() {
   useEffect(() => {
     let isDisposed = false;
+    applyPublishedCms(document);
 
     import('./initSite')
       .then(({ default: initSite }) => {

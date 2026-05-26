@@ -2,18 +2,30 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import HomeApp from './HomeApp.jsx';
 import AboutApp from './AboutApp.jsx';
+import AdminApp from './AdminApp.jsx';
 import './styles.css';
 
-function detectAboutPage() {
+function detectPage() {
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
   const page = new URLSearchParams(window.location.search).get('page');
-  return pathname === '/about' || pathname === '/documents' || page === 'about' || page === 'documents';
+
+  if (pathname === '/admin' || page === 'admin') {
+    return 'admin';
+  }
+
+  if (pathname === '/about' || pathname === '/documents' || page === 'about' || page === 'documents') {
+    return 'about';
+  }
+
+  return 'home';
 }
 
 const root = createRoot(document.getElementById('root'));
-const isAboutPage = detectAboutPage();
+const pageType = detectPage();
 
-if (isAboutPage) {
+if (pageType === 'admin') {
+  root.render(<AdminApp />);
+} else if (pageType === 'about') {
   root.render(<AboutApp />);
 } else {
   root.render(<HomeApp />);

@@ -47,12 +47,12 @@ const aboutMarkup = String.raw`
         <div class="about-grid">
           <article class="about-card">
             <dl class="about-facts">
-              <div><dt>Полное название</dt><dd>АНО Институт «АртКоммуникации»</dd></div>
+              <div><dt>Полное название</dt><dd>Автономная некоммерческая организация Институт креативных индустрий и социального проектирования «АртКоммуникации»</dd></div>
               <div><dt>Международное название</dt><dd>ArtCommunications Institute for Creative Industries &amp; Social Design</dd></div>
               <div><dt>Сокращённое название</dt><dd>АНО Институт «АртКомм»</dd></div>
               <div><dt>Дата создания</dt><dd>22 января 2026</dd></div>
               <div><dt>Учредитель</dt><dd>Рыхлова Ольга Николаевна</dd></div>
-              <div><dt>Адрес</dt><dd>Нижегородская обл., г. Нижний Новгород, ул. Сергиевская, д. 8, 603000</dd></div>
+              <div><dt>Адрес</dt><dd>603000, Нижегородская обл., г.о. Нижний Новгород, г. Нижний Новгород, ул. Сергиевская, д. 8.</dd></div>
               <div><dt>График работы</dt><dd>Пн-Чт 9:00-18:00, Пт 9:00-17:00, Сб-Вс — по расписанию</dd></div>
               <div><dt>Телефон</dt><dd><a href="tel:+79503545558">+7 (950) 354-55-58</a></dd></div>
               <div><dt>Сайт</dt><dd><a href="https://artcomminstitute.ru" target="_blank" rel="noopener noreferrer">artcomminstitute.ru</a></dd></div>
@@ -63,8 +63,8 @@ const aboutMarkup = String.raw`
           <article class="about-card">
             <h3>Документы по основным сведениям</h3>
             <div class="about-links-list">
-              <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Регистрационная карточка организации</a>
-              <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Информация о лицензии на образовательную деятельность</a>
+              <a href="/assets/registracionnaya-kartochka-srv.pdf" target="_blank" rel="noopener noreferrer">Регистрационная карточка организации</a>
+              <span class="about-link-pending">Информация о лицензии на образовательную деятельность (файл добавляется)</span>
               <a href="https://islod.obrnadzor.gov.ru/" target="_blank" rel="noopener noreferrer">Проверить лицензию в реестре Рособрнадзора</a>
             </div>
             <p class="about-note">Файлы и реквизиты будут обновлены после передачи финального пакета документов заказчиком.</p>
@@ -83,14 +83,14 @@ const aboutMarkup = String.raw`
           <ul class="about-doc-list">
             <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Устав организации</a></li>
             <li><a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Выписка ЕГРЮЛ</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Свидетельство ИНН</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Свидетельство ОГРН</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Правила внутреннего распорядка обучающихся</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Правила внутреннего трудового распорядка</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Локальные нормативные акты</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Отчёт о самообследовании</a></li>
-            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Предписания надзорных органов (при наличии)</a></li>
+            <li><span class="about-link-pending">Выписка ЕГРЮЛ (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Свидетельство ИНН (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Свидетельство ОГРН (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Правила внутреннего распорядка обучающихся (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Правила внутреннего трудового распорядка (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Локальные нормативные акты (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Отчёт о самообследовании (файл добавляется)</span></li>
+            <li><span class="about-link-pending">Предписания надзорных органов (при наличии, файл добавляется)</span></li>
           </ul>
         </article>
       </div>
@@ -128,8 +128,8 @@ const aboutMarkup = String.raw`
                 <tr>
                   <td>Дополнительная профессиональная программа (повышение квалификации)</td>
                   <td>«Социальная архитектура и развитие городских сообществ: проектные и коммуникационные компетенции»</td>
-                  <td>Лица с высшим или средним специальным образованием, представители городских сообществ атомных городов</td>
-                  <td>Очно-заочная, с применением дистанционных технологий</td>
+                  <td>Лица с высшим или средним специальным образованием</td>
+                  <td>С применением дистанционных технологий</td>
                   <td>Платформа Getcourse, онлайн-сессии и групповые занятия (Zoom/Webinar)</td>
                   <td>285</td>
                   <td>75</td>
@@ -164,10 +164,10 @@ const aboutMarkup = String.raw`
               </thead>
               <tbody>
                 <tr>
-                  <td>Заполняется заказчиком</td>
-                  <td>—</td>
-                  <td>—</td>
-                  <td>—</td>
+                  <td>Скудняков Роман Владимирович</td>
+                  <td>Директор</td>
+                  <td><a href="tel:+79677113582">+7 (967) 711-35-82</a></td>
+                  <td><a href="mailto:n.gus.ur@mail.ru">n.gus.ur@mail.ru</a></td>
                 </tr>
               </tbody>
             </table>

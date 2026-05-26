@@ -183,13 +183,20 @@ export default function initSite() {
     });
   });
 
-  const photoPool = [
+  const defaultPhotoPool = [
     "/assets/hero-5.jpeg",
     "/assets/hero-4.jpeg",
     "/assets/hero-3.jpeg",
     "/assets/hero-2.jpeg",
     "/assets/hero-1.jpeg"
   ];
+  const cmsPhotoPool =
+    typeof window === "object" && Array.isArray(window.__artcommHeroSlides)
+      ? window.__artcommHeroSlides.filter(function (item) {
+          return typeof item === "string" && item.trim() !== "";
+        })
+      : [];
+  const photoPool = cmsPhotoPool.length ? cmsPhotoPool : defaultPhotoPool;
   const networkInfo =
     typeof navigator === "object"
       ? navigator.connection || navigator.mozConnection || navigator.webkitConnection || null
@@ -206,8 +213,27 @@ export default function initSite() {
   const isTouchLikeDevice =
     typeof window.matchMedia === "function" &&
     window.matchMedia("(pointer: coarse)").matches;
+  const hostName =
+    typeof window.location === "object" && typeof window.location.hostname === "string"
+      ? window.location.hostname.toLowerCase()
+      : "";
+  const isLocalHost =
+    hostName === "localhost" ||
+    hostName === "127.0.0.1" ||
+    hostName === "::1" ||
+    hostName.endsWith(".local");
+  const queryParams =
+    typeof window.location === "object" && typeof window.location.search === "string"
+      ? new URLSearchParams(window.location.search)
+      : null;
+  const videoMode = queryParams ? queryParams.get("video") : null;
+  const forceFastVideo = videoMode === "fast";
+  const forceFullVideo = videoMode === "full";
+  const shouldPreferLocalFastVideo =
+    forceFastVideo ||
+    (!forceFullVideo && (savesData || isSlowNetwork || (isLocalHost && isTouchLikeDevice)));
   const isLiteMode = savesData || isSlowNetwork || isTouchLikeDevice;
-  const allowAutoVideoPlayback = !(savesData || isSlowNetwork);
+  const allowAutoVideoPlayback = !(savesData || isSlowNetwork || isTouchLikeDevice);
   const loadedHeroSlideIndexes = new Set();
   let queuedHeroWarmup = false;
 
@@ -612,13 +638,23 @@ export default function initSite() {
     let changed = false;
 
     if (source && !source.getAttribute("src") && source.dataset.src) {
-      source.setAttribute("src", source.dataset.src);
-      changed = true;
+      const localSrc = source.dataset.localSrc || "";
+      const defaultSrc = source.dataset.src || "";
+      const preferredSrc = shouldPreferLocalFastVideo && localSrc ? localSrc : defaultSrc;
+      if (preferredSrc) {
+        source.setAttribute("src", preferredSrc);
+        changed = true;
+      }
     }
 
     if (!source && !video.getAttribute("src") && video.dataset.src) {
-      video.setAttribute("src", video.dataset.src);
-      changed = true;
+      const localSrc = video.dataset.localSrc || "";
+      const defaultSrc = video.dataset.src || "";
+      const preferredSrc = shouldPreferLocalFastVideo && localSrc ? localSrc : defaultSrc;
+      if (preferredSrc) {
+        video.setAttribute("src", preferredSrc);
+        changed = true;
+      }
     }
 
     if (changed) {
