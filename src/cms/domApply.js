@@ -1,4 +1,12 @@
 import { getPublishedContent } from "./storage";
+import { sanitizeHref, sanitizeHtmlFragment, sanitizeSrc } from "./security";
+
+function getDocumentRef(root) {
+  if (!root) {
+    return document;
+  }
+  return root.nodeType === 9 ? root : root.ownerDocument || document;
+}
 
 function setTextContent(root, selector, value) {
   const node = root.querySelector(selector);
@@ -14,8 +22,20 @@ function setLinkContent(node, { text, href }) {
   if (typeof text === "string") {
     node.textContent = text;
   }
-  if (typeof href === "string" && href) {
-    node.setAttribute("href", href);
+  if (typeof href === "string") {
+    const safeHref = sanitizeHref(href);
+    if (!safeHref) {
+      node.removeAttribute("href");
+      return;
+    }
+    node.setAttribute("href", safeHref);
+    if (/^https?:\/\//i.test(safeHref)) {
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer");
+    } else {
+      node.removeAttribute("target");
+      node.removeAttribute("rel");
+    }
   }
 }
 
@@ -25,10 +45,20 @@ function createLinkItem(documentRef, item) {
   const isPublished = item.isPublished !== false;
 
   if (hasUrl && isPublished) {
+    const safeHref = sanitizeHref(item.url);
+    if (!safeHref) {
+      const placeholder = documentRef.createElement("span");
+      placeholder.className = "about-link-pending";
+      placeholder.textContent = item.title + " (небезопасная ссылка отклонена)";
+      li.appendChild(placeholder);
+      return li;
+    }
     const anchor = documentRef.createElement("a");
-    anchor.href = item.url;
-    anchor.target = "_blank";
-    anchor.rel = "noopener noreferrer";
+    anchor.href = safeHref;
+    if (/^https?:\/\//i.test(safeHref)) {
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+    }
     anchor.textContent = item.title;
     li.appendChild(anchor);
   } else {
@@ -46,10 +76,19 @@ function createLinkNode(documentRef, item) {
   const isPublished = item.isPublished !== false;
 
   if (hasUrl && isPublished) {
+    const safeHref = sanitizeHref(item.url);
+    if (!safeHref) {
+      const placeholder = documentRef.createElement("span");
+      placeholder.className = "about-link-pending";
+      placeholder.textContent = item.title + " (небезопасная ссылка отклонена)";
+      return placeholder;
+    }
     const anchor = documentRef.createElement("a");
-    anchor.href = item.url;
-    anchor.target = "_blank";
-    anchor.rel = "noopener noreferrer";
+    anchor.href = safeHref;
+    if (/^https?:\/\//i.test(safeHref)) {
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+    }
     anchor.textContent = item.title;
     return anchor;
   }
@@ -66,30 +105,31 @@ function renderTrustedPartners(root, trustedPartners) {
     return;
   }
 
+  const documentRef = getDocumentRef(root);
   const published = trustedPartners.filter((item) => item && item.isPublished !== false);
   trustedNetwork.innerHTML = "";
 
-  const canvas = root.ownerDocument.createElement("canvas");
+  const canvas = documentRef.createElement("canvas");
   canvas.className = "trusted-network-canvas";
   canvas.id = "trustedNetworkCanvas";
   canvas.setAttribute("aria-hidden", "true");
   trustedNetwork.appendChild(canvas);
 
   published.forEach((item) => {
-    const node = root.ownerDocument.createElement("span");
+    const node = documentRef.createElement("span");
     node.className = "trusted-node";
     node.setAttribute("data-node", "");
     node.setAttribute("data-x", String(item.x ?? 50));
     node.setAttribute("data-y", String(item.y ?? 50));
     node.setAttribute("data-range", String(item.range ?? 40));
 
-    const image = root.ownerDocument.createElement("img");
-    image.src = item.logo || "";
+    const image = documentRef.createElement("img");
+    image.src = sanitizeSrc(item.logo || "") || "/assets/logos/asi.png";
     image.alt = "";
     image.setAttribute("aria-hidden", "true");
     image.loading = "lazy";
 
-    const label = root.ownerDocument.createElement("span");
+    const label = documentRef.createElement("span");
     label.className = "trusted-node-name";
     label.textContent = item.name || "Партнёр";
 
@@ -105,19 +145,22 @@ function renderHeroSlides(root, slides) {
     return;
   }
 
+  const documentRef = getDocumentRef(root);
   const published = slides.filter((slide) => slide && slide.isPublished !== false && slide.image);
   const sourcePool = published.length ? published : slides;
 
-  heroSlidesNode.innerHTML = sourcePool
-    .map((item, index) => {
-      const activeClass = index === 0 ? " is-active" : "";
-      const alt = item.alt || `Слайд ${index + 1}`;
-      return `<div class="hero-slide${activeClass}" data-slide="${index}" role="img" aria-label="${alt.replace(/"/g, "&quot;")}"></div>`;
-    })
-    .join("");
+  heroSlidesNode.innerHTML = "";
+  sourcePool.forEach((item, index) => {
+    const slide = documentRef.createElement("div");
+    slide.className = `hero-slide${index === 0 ? " is-active" : ""}`;
+    slide.setAttribute("data-slide", String(index));
+    slide.setAttribute("role", "img");
+    slide.setAttribute("aria-label", item.alt || `Слайд ${index + 1}`);
+    heroSlidesNode.appendChild(slide);
+  });
 
   if (typeof window !== "undefined") {
-    window.__artcommHeroSlides = sourcePool.map((item) => item.image).filter(Boolean);
+    window.__artcommHeroSlides = sourcePool.map((item) => sanitizeSrc(item.image)).filter(Boolean);
   }
 }
 
@@ -151,9 +194,17 @@ function applyHomeContent(root, content) {
         button.removeAttribute("data-scroll");
 
         if (source.type === "modal") {
-          button.setAttribute("data-modal", source.target || "test");
+          const modalTarget =
+            typeof source.target === "string" && /^[a-z0-9-]{1,48}$/i.test(source.target)
+              ? source.target
+              : "test";
+          button.setAttribute("data-modal", modalTarget);
         } else {
-          button.setAttribute("data-scroll", source.target || "#contacts");
+          const scrollTarget =
+            typeof source.target === "string" && /^#[a-z0-9_-]{1,48}$/i.test(source.target)
+              ? source.target
+              : "#contacts";
+          button.setAttribute("data-scroll", scrollTarget);
         }
       });
     }
@@ -163,9 +214,10 @@ function applyHomeContent(root, content) {
       const entries = home.hero.trustLine.filter((item) => item && item.isPublished !== false);
       trustLine.innerHTML = "";
       entries.forEach((item) => {
-        const li = root.ownerDocument.createElement("li");
-        const strong = root.ownerDocument.createElement("strong");
-        const span = root.ownerDocument.createElement("span");
+        const documentRef = getDocumentRef(root);
+        const li = documentRef.createElement("li");
+        const strong = documentRef.createElement("strong");
+        const span = documentRef.createElement("span");
         strong.textContent = item.value || "";
         span.textContent = item.caption || "";
         li.appendChild(strong);
@@ -187,9 +239,12 @@ function applyHomeContent(root, content) {
 
     const source = root.querySelector("#msVideo source");
     if (source) {
-      source.setAttribute("data-src", home.mediaStation.videoDesktop || "/assets/gimn-ed-zy9mar.mp4");
-      source.setAttribute("data-local-src", home.mediaStation.videoMobile || home.mediaStation.videoDesktop || "/assets/gimn-ed-zy9mar.mp4");
-      source.setAttribute("data-fallback-src", home.mediaStation.videoFallback || home.mediaStation.videoDesktop || "/assets/gimn-ed-zy9mar.mp4");
+      const safeDesktop = sanitizeSrc(home.mediaStation.videoDesktop) || "/assets/gimn-ed-zy9mar.mp4";
+      const safeMobile = sanitizeSrc(home.mediaStation.videoMobile) || safeDesktop;
+      const safeFallback = sanitizeSrc(home.mediaStation.videoFallback) || safeDesktop;
+      source.setAttribute("data-src", safeDesktop);
+      source.setAttribute("data-local-src", safeMobile);
+      source.setAttribute("data-fallback-src", safeFallback);
       source.removeAttribute("src");
     }
   }
@@ -273,9 +328,7 @@ function applyHomeContent(root, content) {
         modal.removeChild(child);
       });
 
-      const template = root.ownerDocument.createElement("template");
-      template.innerHTML = entry.bodyHtml;
-      const fragment = template.content;
+      const fragment = sanitizeHtmlFragment(entry.bodyHtml, getDocumentRef(root));
       modal.appendChild(fragment);
     });
   }
@@ -287,19 +340,28 @@ function renderAboutFacts(root, facts) {
     return;
   }
 
+  const documentRef = getDocumentRef(root);
   list.innerHTML = "";
   const items = facts.filter((item) => item && item.isPublished !== false);
   items.forEach((item) => {
-    const row = root.ownerDocument.createElement("div");
-    const dt = root.ownerDocument.createElement("dt");
-    const dd = root.ownerDocument.createElement("dd");
+    const row = documentRef.createElement("div");
+    const dt = documentRef.createElement("dt");
+    const dd = documentRef.createElement("dd");
     dt.textContent = item.label || "";
 
     if (item.link) {
-      const anchor = root.ownerDocument.createElement("a");
-      anchor.href = item.link;
+      const safeLink = sanitizeHref(item.link);
+      const anchor = documentRef.createElement("a");
+      if (!safeLink) {
+        dd.textContent = item.value || "";
+        row.appendChild(dt);
+        row.appendChild(dd);
+        list.appendChild(row);
+        return;
+      }
+      anchor.href = safeLink;
       anchor.textContent = item.value || "";
-      if (item.link.startsWith("http")) {
+      if (/^https?:\/\//i.test(safeLink)) {
         anchor.target = "_blank";
         anchor.rel = "noopener noreferrer";
       }
@@ -321,7 +383,7 @@ function renderAboutLinks(root, selector, items, type) {
   }
 
   container.innerHTML = "";
-  const documentRef = root.ownerDocument;
+  const documentRef = getDocumentRef(root);
   const source = items.filter((item) => item);
 
   if (type === "list") {
@@ -348,10 +410,11 @@ function renderTable(root, tableSelector, headers, rows, options = {}) {
     return;
   }
 
+  const documentRef = getDocumentRef(root);
   if (Array.isArray(headers) && headers.length) {
-    const tr = root.ownerDocument.createElement("tr");
+    const tr = documentRef.createElement("tr");
     headers.forEach((header) => {
-      const th = root.ownerDocument.createElement("th");
+      const th = documentRef.createElement("th");
       th.textContent = header;
       tr.appendChild(th);
     });
@@ -362,19 +425,23 @@ function renderTable(root, tableSelector, headers, rows, options = {}) {
   if (Array.isArray(rows)) {
     tbody.innerHTML = "";
     rows.forEach((cells) => {
-      const tr = root.ownerDocument.createElement("tr");
+      const tr = documentRef.createElement("tr");
       (cells || []).forEach((cell, index) => {
-        const td = root.ownerDocument.createElement("td");
+        const td = documentRef.createElement("td");
 
         if (options.linkColumns && options.linkColumns[index]) {
           const linkKind = options.linkColumns[index];
-          const anchor = root.ownerDocument.createElement("a");
+          const anchor = documentRef.createElement("a");
           if (linkKind === "mail") {
-            anchor.href = `mailto:${cell}`;
+            anchor.href = sanitizeHref(`mailto:${cell}`) || "#";
           } else if (linkKind === "tel") {
-            anchor.href = `tel:${String(cell || "").replace(/[^\d+]/g, "")}`;
+            anchor.href = sanitizeHref(`tel:${String(cell || "").replace(/[^\d+]/g, "")}`) || "#";
           } else {
-            anchor.href = cell;
+            anchor.href = sanitizeHref(cell) || "#";
+            if (/^https?:\/\//i.test(anchor.href)) {
+              anchor.target = "_blank";
+              anchor.rel = "noopener noreferrer";
+            }
           }
           anchor.textContent = cell;
           td.appendChild(anchor);
@@ -447,10 +514,16 @@ function applyAboutContent(root, content) {
       const topDocs = about.documentsMain.filter((item) => item.isPublished !== false && item.url).slice(0, 2);
       footerDocs.innerHTML = "";
       topDocs.forEach((item) => {
-        const anchor = root.ownerDocument.createElement("a");
-        anchor.href = item.url;
-        anchor.target = "_blank";
-        anchor.rel = "noopener noreferrer";
+        const safeHref = sanitizeHref(item.url);
+        if (!safeHref) {
+          return;
+        }
+        const anchor = getDocumentRef(root).createElement("a");
+        anchor.href = safeHref;
+        if (/^https?:\/\//i.test(safeHref)) {
+          anchor.target = "_blank";
+          anchor.rel = "noopener noreferrer";
+        }
         anchor.textContent = item.title;
         footerDocs.appendChild(anchor);
       });

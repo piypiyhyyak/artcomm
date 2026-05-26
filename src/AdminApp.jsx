@@ -18,6 +18,7 @@ import {
   publishDraft,
   resetCms,
   saveDraft,
+  setUserPassword,
   setUsers
 } from "./cms/storage";
 
@@ -63,11 +64,11 @@ function Panel({ title, caption, children, compact }) {
   );
 }
 
-function Field({ label, value, onChange, placeholder }) {
+function Field({ label, value, onChange, placeholder, type = "text", disabled = false }) {
   return (
     <label className="admin-field">
       <span>{label}</span>
-      <input value={value || ""} onChange={onChange} placeholder={placeholder || ""} />
+      <input type={type} value={value || ""} onChange={onChange} placeholder={placeholder || ""} disabled={disabled} />
     </label>
   );
 }
@@ -202,6 +203,7 @@ export default function AdminApp() {
   const [tab, setTab] = useState("dashboard");
   const [selectedModalId, setSelectedModalId] = useState(() => cmsState.draft.modals?.[0]?.id || "test");
   const [authForm, setAuthForm] = useState({ login: "", password: "" });
+  const [userPasswordDrafts, setUserPasswordDrafts] = useState({});
   const [feedback, setFeedback] = useState("");
 
   const draft = cmsState.draft;
@@ -230,15 +232,27 @@ export default function AdminApp() {
     syncState(nextState, message || "Черновик сохранён");
   }
 
-  function handleLogin(event) {
+  function updateUsers(mutator, message) {
+    const nextUsers = mutator(cloneDeep(cmsState.users));
+    const nextState = setUsers(nextUsers);
+    syncState(nextState, message || "Пользователи обновлены");
+  }
+
+  async function handleLogin(event) {
     event.preventDefault();
-    const userSession = authenticate(authForm.login.trim(), authForm.password);
-    if (!userSession) {
+    const result = await authenticate(authForm.login.trim(), authForm.password);
+    if (!result.session) {
+      if (result.error === "locked" && result.retryAt) {
+        const retryDate = new Date(result.retryAt).toLocaleString("ru-RU");
+        setFeedback(`Слишком много попыток входа. Повторите после ${retryDate}.`);
+        return;
+      }
       setFeedback("Неверный логин или пароль");
       return;
     }
-    setSession(userSession);
-    setFeedback(`Вход выполнен: ${ROLE_LABELS[userSession.role]}`);
+    setSession(result.session);
+    setAuthForm({ login: "", password: "" });
+    setFeedback(`Вход выполнен: ${ROLE_LABELS[result.session.role]}`);
   }
 
   function handleLogout() {
@@ -267,6 +281,7 @@ export default function AdminApp() {
             />
             <Field
               label="Пароль"
+              type="password"
               value={authForm.password}
               onChange={(event) => setAuthForm((prev) => ({ ...prev, password: event.target.value }))}
             />
@@ -289,7 +304,7 @@ export default function AdminApp() {
   }
 
   return (
-    <main className="admin-shell">
+    <main className={`admin-shell${readonly ? " is-readonly" : ""}`}>
       <header className="admin-topbar">
         <div>
           <p className="admin-kicker">Админ-панель</p>
@@ -327,6 +342,7 @@ export default function AdminApp() {
       </nav>
 
       {feedback ? <p className="admin-feedback is-inline">{feedback}</p> : null}
+      {readonly ? <p className="admin-feedback is-inline">Режим просмотра: редактирование и публикация недоступны.</p> : null}
 
       {tab === "dashboard" ? (
         <div className="admin-grid">
@@ -1416,32 +1432,34 @@ export default function AdminApp() {
                     <Field
                       label="Имя"
                       value={user.name}
-                      onChange={(event) => {
-                        const nextUsers = cloneDeep(cmsState.users);
-                        nextUsers[index].name = event.target.value;
-                        const nextState = setUsers(nextUsers);
-                        syncState(nextState, "Пользователи обновлены");
-                      }}
+                      onChange={(event) =>
+                        updateUsers((nextUsers) => {
+                          nextUsers[index].name = event.target.value;
+                          return nextUsers;
+                        })
+                      }
                     />
                     <Field
                       label="Логин"
                       value={user.login}
-                      onChange={(event) => {
-                        const nextUsers = cloneDeep(cmsState.users);
-                        nextUsers[index].login = event.target.value;
-                        const nextState = setUsers(nextUsers);
-                        syncState(nextState, "Пользователи обновлены");
-                      }}
+                      onChange={(event) =>
+                        updateUsers((nextUsers) => {
+                          nextUsers[index].login = event.target.value;
+                          return nextUsers;
+                        })
+                      }
                     />
                     <Field
-                      label="Пароль"
-                      value={user.password}
-                      onChange={(event) => {
-                        const nextUsers = cloneDeep(cmsState.users);
-                        nextUsers[index].password = event.target.value;
-                        const nextState = setUsers(nextUsers);
-                        syncState(nextState, "Пользователи обновлены");
-                      }}
+                      label="Новый пароль"
+                      type="password"
+                      placeholder="Оставьте пустым, если без изменений"
+                      value={userPasswordDrafts[user.id] || ""}
+                      onChange={(event) =>
+                        setUserPasswordDrafts((prev) => ({
+                          ...prev,
+                          [user.id]: event.target.value
+                        }))
+                      }
                     />
                   </div>
                   <div className="admin-item-actions">
@@ -1449,18 +1467,38 @@ export default function AdminApp() {
                       <span>Роль</span>
                       <select
                         value={user.role}
-                        onChange={(event) => {
-                          const nextUsers = cloneDeep(cmsState.users);
-                          nextUsers[index].role = event.target.value;
-                          const nextState = setUsers(nextUsers);
-                          syncState(nextState, "Роль обновлена");
-                        }}
+                        onChange={(event) =>
+                          updateUsers((nextUsers) => {
+                            nextUsers[index].role = event.target.value;
+                            return nextUsers;
+                          }, "Роль обновлена")
+                        }
                       >
                         <option value={ROLE_ADMIN}>Администратор</option>
                         <option value={ROLE_EDITOR}>Редактор</option>
                         <option value={ROLE_VIEWER}>Просмотр</option>
                       </select>
                     </label>
+
+                    <button
+                      className="btn btn-secondary"
+                      onClick={async () => {
+                        const nextPassword = (userPasswordDrafts[user.id] || "").trim();
+                        if (!nextPassword) {
+                          setFeedback("Введите новый пароль перед сохранением");
+                          return;
+                        }
+                        if (nextPassword.length < 8) {
+                          setFeedback("Пароль должен содержать минимум 8 символов");
+                          return;
+                        }
+                        const nextState = await setUserPassword(user.id, nextPassword);
+                        setUserPasswordDrafts((prev) => ({ ...prev, [user.id]: "" }));
+                        syncState(nextState, "Пароль пользователя обновлён");
+                      }}
+                    >
+                      Сохранить пароль
+                    </button>
 
                     <button
                       className="btn btn-secondary"
@@ -1471,6 +1509,11 @@ export default function AdminApp() {
                           return;
                         }
                         const nextState = setUsers(nextUsers);
+                        setUserPasswordDrafts((prev) => {
+                          const nextDrafts = { ...prev };
+                          delete nextDrafts[user.id];
+                          return nextDrafts;
+                        });
                         syncState(nextState, "Пользователь удалён");
                       }}
                     >
@@ -1490,13 +1533,13 @@ export default function AdminApp() {
                     id: makeId("user"),
                     name: "Новый пользователь",
                     login: `user${cmsState.users.length + 1}`,
-                    password: "change-me",
+                    passwordHash: "e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f",
                     role: ROLE_VIEWER,
                     createdAt: new Date().toISOString()
                   }
                 ];
                 const nextState = setUsers(nextUsers);
-                syncState(nextState, "Пользователь добавлен");
+                syncState(nextState, "Пользователь добавлен (временный пароль: change-me)");
               }}
             >
               Добавить пользователя

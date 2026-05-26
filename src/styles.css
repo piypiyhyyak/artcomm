@@ -5285,6 +5285,11 @@ h3 {
   padding: 30px clamp(16px, 3.4vw, 44px) 56px;
 }
 
+.admin-shell.is-readonly .admin-grid :is(input, textarea, select, button) {
+  pointer-events: none;
+  opacity: 0.72;
+}
+
 .admin-shell .btn {
   font-size: 14px;
   padding: 12px 22px;
