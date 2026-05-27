@@ -19,7 +19,9 @@ import {
   resetCms,
   saveDraft,
   setUserPassword,
-  setUsers
+  setUsers,
+  verifySensitiveAuth,
+  hashPassword
 } from "./cms/storage";
 
 function listToTableText(rows) {
@@ -197,6 +199,8 @@ function DocumentListEditor({
   );
 }
 
+const SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
+
 export default function AdminApp() {
   const [session, setSession] = useState(() => getSession());
   const [cmsState, setCmsState] = useState(() => loadCmsState());
@@ -204,6 +208,8 @@ export default function AdminApp() {
   const [selectedModalId, setSelectedModalId] = useState(() => cmsState.draft.modals?.[0]?.id || "test");
   const [authForm, setAuthForm] = useState({ login: "", password: "" });
   const [userPasswordDrafts, setUserPasswordDrafts] = useState({});
+  const [userPasswordConfirmDrafts, setUserPasswordConfirmDrafts] = useState({});
+  const [passwordGateForm, setPasswordGateForm] = useState({ login: "", password: "", codeword: "" });
   const [feedback, setFeedback] = useState("");
 
   const draft = cmsState.draft;
@@ -292,7 +298,7 @@ export default function AdminApp() {
           <div className="admin-auth-hint">
             <p>Тестовые данные:</p>
             <ul>
-              <li>`admin / artcomm-admin-2026`</li>
+              <li>`admin / qwerty12345`</li>
               <li>`editor / artcomm-editor-2026`</li>
               <li>`viewer / artcomm-view-2026`</li>
             </ul>
@@ -1425,10 +1431,51 @@ export default function AdminApp() {
       {tab === "users" && canManageUsersNow ? (
         <div className="admin-grid">
           <Panel title="Пользователи и роли" caption="Минимум 3 учётные записи по ТЗ" compact>
+            <div className="admin-item">
+              <h3 className="admin-subtitle">Подтверждение безопасности для смены паролей</h3>
+              <p className="admin-note">
+                Перед сменой пароля повторно введите текущие логин/пароль администратора и кодовое слово.
+              </p>
+              <div className="admin-item-grid three-col">
+                <Field
+                  label="Логин для подтверждения"
+                  value={passwordGateForm.login}
+                  onChange={(event) =>
+                    setPasswordGateForm((prev) => ({
+                      ...prev,
+                      login: event.target.value
+                    }))
+                  }
+                />
+                <Field
+                  label="Пароль для подтверждения"
+                  type="password"
+                  value={passwordGateForm.password}
+                  onChange={(event) =>
+                    setPasswordGateForm((prev) => ({
+                      ...prev,
+                      password: event.target.value
+                    }))
+                  }
+                />
+                <Field
+                  label="Кодовое слово"
+                  type="password"
+                  value={passwordGateForm.codeword}
+                  onChange={(event) =>
+                    setPasswordGateForm((prev) => ({
+                      ...prev,
+                      codeword: event.target.value
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
             <div className="admin-list">
               {cmsState.users.map((user, index) => (
                 <article className="admin-item" key={user.id}>
-                  <div className="admin-item-grid three-col">
+                  <div className="admin-item-grid four-col">
                     <Field
                       label="Имя"
                       value={user.name}
@@ -1461,6 +1508,18 @@ export default function AdminApp() {
                         }))
                       }
                     />
+                    <Field
+                      label="Повторите новый пароль"
+                      type="password"
+                      placeholder="Должен совпадать с новым паролем"
+                      value={userPasswordConfirmDrafts[user.id] || ""}
+                      onChange={(event) =>
+                        setUserPasswordConfirmDrafts((prev) => ({
+                          ...prev,
+                          [user.id]: event.target.value
+                        }))
+                      }
+                    />
                   </div>
                   <div className="admin-item-actions">
                     <label className="admin-field">
@@ -1484,17 +1543,71 @@ export default function AdminApp() {
                       className="btn btn-secondary"
                       onClick={async () => {
                         const nextPassword = (userPasswordDrafts[user.id] || "").trim();
+                        const repeatPassword = (userPasswordConfirmDrafts[user.id] || "").trim();
                         if (!nextPassword) {
                           setFeedback("Введите новый пароль перед сохранением");
+                          return;
+                        }
+                        if (nextPassword !== repeatPassword) {
+                          setFeedback("Новый пароль и подтверждение не совпадают");
                           return;
                         }
                         if (nextPassword.length < 8) {
                           setFeedback("Пароль должен содержать минимум 8 символов");
                           return;
                         }
-                        const nextState = await setUserPassword(user.id, nextPassword);
-                        setUserPasswordDrafts((prev) => ({ ...prev, [user.id]: "" }));
-                        syncState(nextState, "Пароль пользователя обновлён");
+                        if (
+                          !passwordGateForm.login.trim() ||
+                          !passwordGateForm.password.trim() ||
+                          !passwordGateForm.codeword.trim()
+                        ) {
+                          setFeedback("Для смены пароля заполните блок подтверждения безопасности");
+                          return;
+                        }
+
+                        const codewordHash = await hashPassword(passwordGateForm.codeword.trim());
+                        if (codewordHash !== SECURITY_CODEWORD_HASH) {
+                          setFeedback("Неверное кодовое слово для смены пароля");
+                          return;
+                        }
+
+                        const gate = await verifySensitiveAuth(
+                          passwordGateForm.login.trim(),
+                          passwordGateForm.password
+                        );
+                        if (!gate.user) {
+                          if (gate.error === "locked" && gate.retryAt) {
+                            const retryDate = new Date(gate.retryAt).toLocaleString("ru-RU");
+                            setFeedback(`Слишком много попыток подтверждения. Повторите после ${retryDate}.`);
+                            return;
+                          }
+                          setFeedback("Повторная авторизация не пройдена: неверный логин или пароль");
+                          return;
+                        }
+
+                        if (!session || gate.user.id !== session.id) {
+                          setFeedback("Подтверждение должно быть выполнено под текущей админ-учётной записью");
+                          return;
+                        }
+
+                        try {
+                          const nextState = await setUserPassword(user.id, nextPassword, {
+                            authLogin: passwordGateForm.login.trim(),
+                            authPassword: passwordGateForm.password,
+                            codeword: passwordGateForm.codeword.trim(),
+                            sessionUserId: session.id
+                          });
+                          setUserPasswordDrafts((prev) => ({ ...prev, [user.id]: "" }));
+                          setUserPasswordConfirmDrafts((prev) => ({ ...prev, [user.id]: "" }));
+                          setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
+                          syncState(nextState, "Пароль пользователя обновлён");
+                        } catch (error) {
+                          if (error instanceof Error && error.message === "locked") {
+                            setFeedback("Слишком много попыток подтверждения. Подождите и попробуйте снова.");
+                            return;
+                          }
+                          setFeedback("Не удалось обновить пароль. Проверьте данные подтверждения и требования безопасности.");
+                        }
                       }}
                     >
                       Сохранить пароль
@@ -1510,6 +1623,11 @@ export default function AdminApp() {
                         }
                         const nextState = setUsers(nextUsers);
                         setUserPasswordDrafts((prev) => {
+                          const nextDrafts = { ...prev };
+                          delete nextDrafts[user.id];
+                          return nextDrafts;
+                        });
+                        setUserPasswordConfirmDrafts((prev) => {
                           const nextDrafts = { ...prev };
                           delete nextDrafts[user.id];
                           return nextDrafts;

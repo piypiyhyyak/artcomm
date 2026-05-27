@@ -16,6 +16,11 @@ const LOGIN_GUARD_KEY = "artcomm.cms.login-guard.v1";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const LOGIN_ATTEMPT_LIMIT = 6;
 const LOGIN_COOLDOWN_MS = 1000 * 60 * 5;
+const ADMIN_ID = "admin-1";
+const REQUIRED_ADMIN_LOGIN = "admin";
+const REQUIRED_ADMIN_PASSWORD_HASH = "f6ee94ecb014f74f887b9dcc52daecf73ab3e3333320cadd98bcb59d895c52f5";
+const LEGACY_ADMIN_PASSWORD_HASH = "893cbcc2f9197dce1feea7c1e80486f27ae0be699408157d744928b600a7e82b";
+const SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
 
 function nowIso() {
   return new Date().toISOString();
@@ -99,6 +104,46 @@ function resetFailedAttempts() {
   saveLoginGuard({ failedAttempts: 0, lockUntil: 0 });
 }
 
+function normalizeLoadedUsers(rawUsers) {
+  const users = Array.isArray(rawUsers) ? cloneDeep(rawUsers) : [];
+  if (!users.length) {
+    return cloneDeep(DEFAULT_USERS);
+  }
+
+  const adminIndex = users.findIndex((user) => user && user.id === ADMIN_ID);
+  if (adminIndex >= 0) {
+    const currentAdmin = users[adminIndex];
+    const nextAdmin = {
+      ...currentAdmin,
+      id: ADMIN_ID,
+      login: REQUIRED_ADMIN_LOGIN,
+      role: ROLE_ADMIN
+    };
+
+    const shouldSetRequiredPassword =
+      !nextAdmin.passwordHash ||
+      nextAdmin.passwordHash === LEGACY_ADMIN_PASSWORD_HASH ||
+      nextAdmin.password === "artcomm-admin-2026";
+
+    if (shouldSetRequiredPassword) {
+      nextAdmin.passwordHash = REQUIRED_ADMIN_PASSWORD_HASH;
+      delete nextAdmin.password;
+    }
+
+    users[adminIndex] = nextAdmin;
+    return users;
+  }
+
+  users.unshift({
+    ...cloneDeep(DEFAULT_USERS[0]),
+    id: ADMIN_ID,
+    login: REQUIRED_ADMIN_LOGIN,
+    role: ROLE_ADMIN,
+    passwordHash: REQUIRED_ADMIN_PASSWORD_HASH
+  });
+  return users;
+}
+
 export function loadCmsState() {
   if (!hasWindowStorage()) {
     return createBaseState();
@@ -121,10 +166,13 @@ export function loadCmsState() {
 
     const fallback = createBaseState();
 
+    const sourceUsers = Array.isArray(parsed.users) && parsed.users.length ? parsed.users : fallback.users;
+    const normalizedUsers = normalizeLoadedUsers(sourceUsers);
+
     const merged = {
       ...fallback,
       ...parsed,
-      users: Array.isArray(parsed.users) && parsed.users.length ? parsed.users : fallback.users,
+      users: normalizedUsers,
       draft: parsed.draft && typeof parsed.draft === "object" ? parsed.draft : fallback.draft,
       published:
         parsed.published && typeof parsed.published === "object"
@@ -136,6 +184,10 @@ export function loadCmsState() {
 
     if (!merged.version || merged.version !== CMS_VERSION) {
       merged.version = CMS_VERSION;
+    }
+
+    if (JSON.stringify(sourceUsers) !== JSON.stringify(normalizedUsers)) {
+      saveCmsState(merged);
     }
 
     return merged;
@@ -195,7 +247,7 @@ export function saveDraft(mutator) {
 
 export function setUsers(nextUsers) {
   const state = loadCmsState();
-  state.users = (nextUsers || []).map((user) => {
+  state.users = normalizeLoadedUsers((nextUsers || []).map((user) => {
     const normalized = {
       id: user.id,
       name: user.name,
@@ -205,16 +257,18 @@ export function setUsers(nextUsers) {
       passwordHash: user.passwordHash || ""
     };
     return normalized;
-  });
+  }));
   saveCmsState(state);
   return state;
 }
 
-export async function authenticate(login, password) {
+async function verifyCredentials(login, password, options = {}) {
+  const { touchGuard = true } = options;
+
   const lock = isLockedOut();
   if (lock) {
     return {
-      session: null,
+      user: null,
       error: "locked",
       retryAt: lock.lockUntil
     };
@@ -233,9 +287,11 @@ export async function authenticate(login, password) {
   });
 
   if (!user) {
-    registerFailedAttempt();
+    if (touchGuard) {
+      registerFailedAttempt();
+    }
     return {
-      session: null,
+      user: null,
       error: "invalid"
     };
   }
@@ -256,21 +312,43 @@ export async function authenticate(login, password) {
     saveCmsState(state);
   }
 
+  if (touchGuard) {
+    resetFailedAttempts();
+  }
+
+  return {
+    user,
+    error: null
+  };
+}
+
+export async function authenticate(login, password) {
+  const check = await verifyCredentials(login, password, { touchGuard: true });
+  if (!check.user) {
+    return {
+      session: null,
+      error: check.error,
+      retryAt: check.retryAt
+    };
+  }
+
   const session = {
-    id: user.id,
-    name: user.name,
-    login: user.login,
-    role: user.role,
+    id: check.user.id,
+    name: check.user.name,
+    login: check.user.login,
+    role: check.user.role,
     loggedAt: nowIso()
   };
-
-  resetFailedAttempts();
 
   if (hasWindowStorage()) {
     window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   }
 
   return { session, error: null };
+}
+
+export async function verifySensitiveAuth(login, password) {
+  return verifyCredentials(login, password, { touchGuard: true });
 }
 
 export function getSession() {
@@ -319,9 +397,44 @@ export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
-export async function setUserPassword(userId, password) {
+export async function setUserPassword(userId, password, gate = null) {
+  const normalizedPassword = String(password || "").trim();
+  if (normalizedPassword.length < 8) {
+    throw new Error("password_too_short");
+  }
+
+  if (!gate || typeof gate !== "object") {
+    throw new Error("missing_gate");
+  }
+
+  const authLogin = String(gate.authLogin || "").trim();
+  const authPassword = String(gate.authPassword || "");
+  const codeword = String(gate.codeword || "").trim();
+  const sessionUserId = String(gate.sessionUserId || "").trim();
+
+  if (!authLogin || !authPassword || !codeword || !sessionUserId) {
+    throw new Error("invalid_gate");
+  }
+
+  const codewordHash = await hashPassword(codeword);
+  if (codewordHash !== SECURITY_CODEWORD_HASH) {
+    throw new Error("invalid_codeword");
+  }
+
+  const verification = await verifyCredentials(authLogin, authPassword, { touchGuard: true });
+  if (!verification.user) {
+    if (verification.error === "locked") {
+      throw new Error("locked");
+    }
+    throw new Error("invalid_auth");
+  }
+
+  if (verification.user.id !== sessionUserId || verification.user.role !== ROLE_ADMIN) {
+    throw new Error("forbidden");
+  }
+
   const state = loadCmsState();
-  const hashed = await hashPassword(password);
+  const hashed = await hashPassword(normalizedPassword);
   state.users = state.users.map((user) =>
     user.id === userId
       ? {

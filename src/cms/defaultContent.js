@@ -15,7 +15,7 @@ export const DEFAULT_USERS = [
     id: "admin-1",
     name: "Системный администратор",
     login: "admin",
-    passwordHash: "893cbcc2f9197dce1feea7c1e80486f27ae0be699408157d744928b600a7e82b",
+    passwordHash: "f6ee94ecb014f74f887b9dcc52daecf73ab3e3333320cadd98bcb59d895c52f5",
     role: ROLE_ADMIN,
     createdAt: "2026-05-26T09:00:00.000Z"
   },
