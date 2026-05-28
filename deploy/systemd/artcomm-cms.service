@@ -1,0 +1,25 @@
+[Unit]
+Description=Artcomm CMS API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/Artcomm
+Environment=NODE_ENV=production
+Environment=CMS_HOST=127.0.0.1
+Environment=CMS_PORT=8787
+Environment=CMS_ROOT_DIR=/var/www/Artcomm
+Environment=ARTCOMM_CMS_DATA_DIR=/var/lib/artcomm-cms
+Environment=ARTCOMM_CMS_ASSETS_DIR=/var/www/html/assets
+ExecStart=/usr/bin/env node /var/www/Artcomm/cmsServer.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/artcomm-cms /var/www/html/assets
+
+[Install]
+WantedBy=multi-user.target

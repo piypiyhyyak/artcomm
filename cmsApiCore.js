@@ -641,8 +641,8 @@ export function createCmsApiHandler(options = {}) {
   const rootDir = path.resolve(options.rootDir || process.cwd());
   const dataDir = path.resolve(process.env.ARTCOMM_CMS_DATA_DIR || path.join(rootDir, "cms-data"));
   const stateFile = path.join(dataDir, "state.json");
-  const publicDir = path.resolve(rootDir, "public");
-  const assetsDir = path.resolve(publicDir, "assets");
+  const publicDir = path.resolve(process.env.ARTCOMM_CMS_PUBLIC_DIR || path.join(rootDir, "public"));
+  const assetsDir = path.resolve(process.env.ARTCOMM_CMS_ASSETS_DIR || path.join(publicDir, "assets"));
 
   const sessions = new Map();
   const loginGuards = new Map();
@@ -1131,10 +1131,10 @@ export function createCmsApiHandler(options = {}) {
 
         const body = await readJsonBody(req);
         const assetPath = ensureAssetsPath(body.path);
-        const relativePath = assetPath.slice(1);
-        const absoluteFile = path.resolve(publicDir, relativePath);
+        const relativePath = assetPath.slice("/assets/".length);
+        const absoluteFile = path.resolve(assetsDir, relativePath);
 
-        if (!absoluteFile.startsWith(path.resolve(publicDir) + path.sep)) {
+        if (!absoluteFile.startsWith(path.resolve(assetsDir) + path.sep) && absoluteFile !== path.resolve(assetsDir)) {
           sendJson(res, 400, { ok: false, error: "invalid_path" });
           return true;
         }
