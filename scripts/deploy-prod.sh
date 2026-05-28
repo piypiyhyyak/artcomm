@@ -26,6 +26,11 @@ if [ -f "$MP4_BACKUP" ]; then
   mv "$MP4_BACKUP" "$MP4_PATH"
 fi
 
+if id -u www-data >/dev/null 2>&1; then
+  chown -R www-data:www-data "$WEB_ROOT/assets"
+  chmod -R u+rwX,g+rwX "$WEB_ROOT/assets"
+fi
+
 if systemctl list-unit-files | grep -q "^${CMS_SERVICE}\\.service"; then
   systemctl restart "$CMS_SERVICE"
 fi
