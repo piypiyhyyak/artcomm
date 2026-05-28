@@ -17,15 +17,16 @@ const aboutMarkup = String.raw`
     </div>
   </header>
 
-  <main class="about-page" id="aboutMainContent">
+  <main class="about-page about-page-v2" id="aboutMainContent">
     <section class="about-hero section-deep">
       <div class="container about-hero-inner">
-        <p class="section-kicker">Официальный раздел</p>
-        <h1>Сведения об организации</h1>
-        <p class="about-hero-text">Раздел подготовлен в соответствии с требованиями законодательства и техническим заданием на сайт АНО Институт «АртКомм».</p>
-        <div class="about-hero-actions">
-          <a class="btn btn-primary" href="#about-basic">Основные сведения</a>
-          <a class="btn btn-secondary" href="#about-docs">Документы</a>
+        <div class="about-hero-copy">
+          <h1>Сведения об организации</h1>
+          <p class="about-hero-text">Раздел подготовлен в соответствии с требованиями законодательства и техническим заданием на сайт АНО Институт «АртКомм».</p>
+          <div class="about-hero-actions">
+            <a class="btn btn-primary" href="#about-basic">Основные сведения</a>
+            <a class="btn btn-secondary" href="#about-docs">Документы</a>
+          </div>
         </div>
       </div>
     </section>
@@ -64,10 +65,10 @@ const aboutMarkup = String.raw`
             <h3>Документы по основным сведениям</h3>
             <div class="about-links-list">
               <a href="/assets/registracionnaya-kartochka-srv.pdf" target="_blank" rel="noopener noreferrer">Регистрационная карточка организации</a>
-              <span class="about-link-pending">Информация о лицензии на образовательную деятельность (файл добавляется)</span>
+              <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Информация о лицензии на образовательную деятельность</a>
               <a href="https://islod.obrnadzor.gov.ru/" target="_blank" rel="noopener noreferrer">Проверить лицензию в реестре Рособрнадзора</a>
             </div>
-            <p class="about-note">Файлы и реквизиты будут обновлены после передачи финального пакета документов заказчиком.</p>
+            <p class="about-note">До публикации оригиналов часть пунктов временно ведёт на устав организации.</p>
           </article>
         </div>
       </div>
@@ -83,14 +84,14 @@ const aboutMarkup = String.raw`
           <ul class="about-doc-list">
             <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Устав организации</a></li>
             <li><a href="/assets/program-obrazovaniya-artkomm.pdf" target="_blank" rel="noopener noreferrer">Программа образования</a></li>
-            <li><span class="about-link-pending">Выписка ЕГРЮЛ (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Свидетельство ИНН (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Свидетельство ОГРН (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Правила внутреннего распорядка обучающихся (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Правила внутреннего трудового распорядка (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Локальные нормативные акты (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Отчёт о самообследовании (файл добавляется)</span></li>
-            <li><span class="about-link-pending">Предписания надзорных органов (при наличии, файл добавляется)</span></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Выписка ЕГРЮЛ</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Свидетельство ИНН</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Свидетельство ОГРН</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Правила внутреннего распорядка обучающихся</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Правила внутреннего трудового распорядка</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Локальные нормативные акты</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Отчёт о самообследовании</a></li>
+            <li><a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Предписания надзорных органов (при наличии)</a></li>
           </ul>
         </article>
       </div>
@@ -219,7 +220,7 @@ const aboutMarkup = String.raw`
           <article class="about-card">
             <h3>Образовательные стандарты</h3>
             <div class="about-links-list">
-              <a href="http://www.kremlin.ru/acts/bank/39206" target="_blank" rel="noopener noreferrer">Федеральный закон №273-ФЗ «Об образовании в РФ»</a>
+              <a href="https://www.kremlin.ru/acts/bank/39206" target="_blank" rel="noopener noreferrer">Федеральный закон №273-ФЗ «Об образовании в РФ»</a>
               <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Нормативные правовые акты (список уточняется)</a>
             </div>
           </article>

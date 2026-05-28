@@ -17,6 +17,8 @@ yarn-error.log*
 # Temporary debug artifacts
 tmp_*
 tmp-*
+tmp/
+cms-data/
 
 # Large videos should stay outside git
 *.mp4

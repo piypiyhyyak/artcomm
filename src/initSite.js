@@ -971,7 +971,13 @@ export default function initSite() {
       return;
     }
 
-    diamondReadout.innerHTML = "<strong>" + entry.key + "</strong><span>Город: " + entry.city + " · Среднее: " + entry.avg + "</span>";
+    diamondReadout.textContent = "";
+    const title = document.createElement("strong");
+    title.textContent = entry.key;
+    const copy = document.createElement("span");
+    copy.textContent = "Город: " + entry.city + " · Среднее: " + entry.avg;
+    diamondReadout.appendChild(title);
+    diamondReadout.appendChild(copy);
   }
 
   function positionDiamondTooltip(target) {
@@ -1003,7 +1009,15 @@ export default function initSite() {
       diamondTooltipTimer = null;
     }
 
-    diamondTooltip.innerHTML = "<strong>" + entry.key + "</strong><br>Город: " + entry.city + "<br>Среднее: " + entry.avg;
+    diamondTooltip.textContent = "";
+    const strong = document.createElement("strong");
+    strong.textContent = entry.key;
+    diamondTooltip.appendChild(strong);
+    diamondTooltip.appendChild(document.createElement("br"));
+    diamondTooltip.appendChild(document.createTextNode("Город: " + entry.city));
+    diamondTooltip.appendChild(document.createElement("br"));
+    diamondTooltip.appendChild(document.createTextNode("Среднее: " + entry.avg));
+
     positionDiamondTooltip(entry.hit);
     diamondTooltip.hidden = false;
 
@@ -1182,7 +1196,11 @@ export default function initSite() {
         activateDiamondEntry(diamondPointEntries[0], false);
       }
     } catch (_) {
-      diamondSvgHost.innerHTML = "<img src='/assets/chart.svg' alt='Диаграмма ИКС'>";
+      diamondSvgHost.textContent = "";
+      const fallbackImage = document.createElement("img");
+      fallbackImage.src = "/assets/chart.svg";
+      fallbackImage.alt = "Диаграмма ИКС";
+      diamondSvgHost.appendChild(fallbackImage);
     }
 
     iksAxisItems.forEach(function (item) {
@@ -1252,12 +1270,19 @@ export default function initSite() {
     observer.observe(diamondChart);
   }
 
-  const expertPhotos = [
+  const defaultExpertPhotos = [
     "/assets/expert-1.jpg",
     "/assets/expert-2.jpg",
     "/assets/expert-3.jpg",
     "/assets/expert-4.jpg"
   ];
+  const cmsExpertPhotos =
+    typeof window === "object" && Array.isArray(window.__artcommExpertPhotos)
+      ? window.__artcommExpertPhotos.filter(function (item) {
+          return typeof item === "string" && item.trim() !== "";
+        })
+      : [];
+  const expertPhotos = cmsExpertPhotos.length ? cmsExpertPhotos : defaultExpertPhotos;
 
   let activeExpertPhotoIndex = 0;
   const EXPERT_AUTOPLAY_DELAY = 6000;
@@ -1458,7 +1483,15 @@ export default function initSite() {
   }
 
   function openModal(modalId) {
-    const targetModal = $(".modal[data-modal-id='" + modalId + "']");
+    const safeModalId =
+      typeof modalId === "string" && /^[a-z0-9-]{1,48}$/i.test(modalId)
+        ? modalId
+        : "";
+    if (!safeModalId) {
+      return;
+    }
+
+    const targetModal = $(".modal[data-modal-id='" + safeModalId + "']");
     if (!targetModal) {
       return;
     }
@@ -1486,7 +1519,7 @@ export default function initSite() {
     activeModal = targetModal;
     syncHeaderVisualState();
 
-    if (modalId === "test") {
+    if (safeModalId === "test") {
       initTest();
     }
 
@@ -1639,7 +1672,23 @@ export default function initSite() {
 
     testQuestionWrap.hidden = true;
     testResult.hidden = false;
-    testResult.innerHTML = "<h4>Результат готов</h4><p>Рекомендуемый формат: <strong>" + recommendation + "</strong></p><p>Итоговый балл: " + totalScore + " из 12.</p>";
+    testResult.textContent = "";
+
+    const title = document.createElement("h4");
+    title.textContent = "Результат готов";
+
+    const recommendationCopy = document.createElement("p");
+    recommendationCopy.appendChild(document.createTextNode("Рекомендуемый формат: "));
+    const recommendationStrong = document.createElement("strong");
+    recommendationStrong.textContent = recommendation;
+    recommendationCopy.appendChild(recommendationStrong);
+
+    const scoreCopy = document.createElement("p");
+    scoreCopy.textContent = "Итоговый балл: " + totalScore + " из 12.";
+
+    testResult.appendChild(title);
+    testResult.appendChild(recommendationCopy);
+    testResult.appendChild(scoreCopy);
 
     const cta = document.createElement("button");
     cta.className = "btn btn-primary";

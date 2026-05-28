@@ -26,6 +26,8 @@ function setLinkContent(node, { text, href }) {
     const safeHref = sanitizeHref(href);
     if (!safeHref) {
       node.removeAttribute("href");
+      node.removeAttribute("target");
+      node.removeAttribute("rel");
       return;
     }
     node.setAttribute("href", safeHref);
@@ -41,6 +43,7 @@ function setLinkContent(node, { text, href }) {
 
 function createLinkItem(documentRef, item) {
   const li = documentRef.createElement("li");
+  const safeTitle = typeof item?.title === "string" && item.title.trim() ? item.title.trim() : "Документ";
   const hasUrl = typeof item.url === "string" && item.url.trim() !== "";
   const isPublished = item.isPublished !== false;
 
@@ -49,7 +52,7 @@ function createLinkItem(documentRef, item) {
     if (!safeHref) {
       const placeholder = documentRef.createElement("span");
       placeholder.className = "about-link-pending";
-      placeholder.textContent = item.title + " (небезопасная ссылка отклонена)";
+      placeholder.textContent = safeTitle + " (небезопасная ссылка отклонена)";
       li.appendChild(placeholder);
       return li;
     }
@@ -59,12 +62,12 @@ function createLinkItem(documentRef, item) {
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
     }
-    anchor.textContent = item.title;
+    anchor.textContent = safeTitle;
     li.appendChild(anchor);
   } else {
     const placeholder = documentRef.createElement("span");
     placeholder.className = "about-link-pending";
-    placeholder.textContent = item.title + (item.title.includes("добавляется") ? "" : " (файл добавляется)");
+    placeholder.textContent = safeTitle + (safeTitle.includes("добавляется") ? "" : " (файл добавляется)");
     li.appendChild(placeholder);
   }
 
@@ -72,6 +75,7 @@ function createLinkItem(documentRef, item) {
 }
 
 function createLinkNode(documentRef, item) {
+  const safeTitle = typeof item?.title === "string" && item.title.trim() ? item.title.trim() : "Документ";
   const hasUrl = typeof item.url === "string" && item.url.trim() !== "";
   const isPublished = item.isPublished !== false;
 
@@ -80,7 +84,7 @@ function createLinkNode(documentRef, item) {
     if (!safeHref) {
       const placeholder = documentRef.createElement("span");
       placeholder.className = "about-link-pending";
-      placeholder.textContent = item.title + " (небезопасная ссылка отклонена)";
+      placeholder.textContent = safeTitle + " (небезопасная ссылка отклонена)";
       return placeholder;
     }
     const anchor = documentRef.createElement("a");
@@ -89,13 +93,13 @@ function createLinkNode(documentRef, item) {
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
     }
-    anchor.textContent = item.title;
+    anchor.textContent = safeTitle;
     return anchor;
   }
 
   const placeholder = documentRef.createElement("span");
   placeholder.className = "about-link-pending";
-  placeholder.textContent = item.title + (item.title.includes("добавляется") ? "" : " (файл добавляется)");
+  placeholder.textContent = safeTitle + (safeTitle.includes("добавляется") ? "" : " (файл добавляется)");
   return placeholder;
 }
 
@@ -164,6 +168,295 @@ function renderHeroSlides(root, slides) {
   }
 }
 
+function applyActionButton(node, source, fallbackScroll = "#contacts", fallbackModal = "test") {
+  if (!node || !source) {
+    return;
+  }
+
+  node.textContent = source.label || node.textContent;
+  node.classList.toggle("btn-primary", source.variant === "primary");
+  node.classList.toggle("btn-secondary", source.variant !== "primary");
+
+  node.removeAttribute("data-modal");
+  node.removeAttribute("data-scroll");
+
+  if (source.type === "modal") {
+    const modalTarget =
+      typeof source.target === "string" && /^[a-z0-9-]{1,48}$/i.test(source.target)
+        ? source.target
+        : fallbackModal;
+    node.setAttribute("data-modal", modalTarget);
+    return;
+  }
+
+  const scrollTarget =
+    typeof source.target === "string" && /^#[a-z0-9_-]{1,64}$/i.test(source.target)
+      ? source.target
+      : fallbackScroll;
+  node.setAttribute("data-scroll", scrollTarget);
+}
+
+function applyActionButtons(root, selector, actions, options = {}) {
+  const buttons = Array.from(root.querySelectorAll(selector));
+  if (!buttons.length || !Array.isArray(actions)) {
+    return;
+  }
+
+  const published = actions.filter((item) => item && item.isPublished !== false);
+  buttons.forEach((button, index) => {
+    const source = published[index];
+    if (!source) {
+      button.style.display = "none";
+      return;
+    }
+    button.style.display = "inline-flex";
+    applyActionButton(button, source, options.fallbackScroll, options.fallbackModal);
+  });
+}
+
+function renderCommonPains(root, pains) {
+  const stack = root.querySelector("#commonDrumStack");
+  if (!stack || !Array.isArray(pains)) {
+    return;
+  }
+
+  const documentRef = getDocumentRef(root);
+  const published = pains.filter((item) => item && item.isPublished !== false);
+  stack.innerHTML = "";
+
+  published.forEach((item, index) => {
+    const article = documentRef.createElement("article");
+    article.className = "common-drum-item pain-redo";
+    article.setAttribute("data-drum-index", String(index));
+
+    const icon = documentRef.createElement("span");
+    icon.className = "pain-redo-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "›";
+
+    const copy = documentRef.createElement("div");
+    copy.className = "pain-redo-copy";
+    const title = documentRef.createElement("h3");
+    const text = documentRef.createElement("p");
+    title.textContent = item.title || "";
+    text.textContent = item.text || "";
+    copy.appendChild(title);
+    copy.appendChild(text);
+
+    article.appendChild(icon);
+    article.appendChild(copy);
+    stack.appendChild(article);
+  });
+}
+
+function renderMetricStats(root, stats) {
+  const container = root.querySelector(".ms-stats-list");
+  if (!container || !Array.isArray(stats)) {
+    return;
+  }
+
+  const documentRef = getDocumentRef(root);
+  const published = stats.filter((item) => item && item.isPublished !== false);
+  container.innerHTML = "";
+
+  published.forEach((item) => {
+    const article = documentRef.createElement("article");
+    const strong = documentRef.createElement("strong");
+    const span = documentRef.createElement("span");
+
+    const rawValue = String(item.value ?? "").trim();
+    const suffix = String(item.suffix || "").trim();
+    const numeric = Number.parseFloat(rawValue.replace(",", ".").replace(/\s+/g, ""));
+    if (Number.isFinite(numeric)) {
+      strong.dataset.counter = String(numeric);
+    } else {
+      strong.removeAttribute("data-counter");
+    }
+    if (suffix) {
+      strong.dataset.suffix = suffix;
+    } else {
+      strong.removeAttribute("data-suffix");
+    }
+    strong.textContent = `${rawValue}${suffix}`;
+    span.textContent = item.label || "";
+
+    article.appendChild(strong);
+    article.appendChild(span);
+    container.appendChild(article);
+  });
+}
+
+function renderLoyaltyRings(root, loyalty) {
+  const container = root.querySelector("#loyaltyBars");
+  if (!container || !Array.isArray(loyalty)) {
+    return;
+  }
+
+  const documentRef = getDocumentRef(root);
+  const published = loyalty.filter((item) => item && item.isPublished !== false);
+  container.innerHTML = "";
+
+  published.forEach((item) => {
+    const valueNum = Number.parseFloat(String(item.value ?? "0").replace(",", "."));
+    const value = Number.isFinite(valueNum) ? Math.max(0, Math.min(100, valueNum)) : 0;
+
+    const article = documentRef.createElement("article");
+    article.className = "loyalty-cell";
+
+    const ringWrap = documentRef.createElement("div");
+    ringWrap.className = "loyalty-ring-wrap";
+
+    const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "loyalty-ring");
+    svg.setAttribute("viewBox", "0 0 120 120");
+    svg.setAttribute("aria-hidden", "true");
+
+    const track = documentRef.createElementNS("http://www.w3.org/2000/svg", "circle");
+    track.setAttribute("class", "ring-track");
+    track.setAttribute("cx", "60");
+    track.setAttribute("cy", "60");
+    track.setAttribute("r", "46");
+
+    const progress = documentRef.createElementNS("http://www.w3.org/2000/svg", "circle");
+    progress.setAttribute("class", "ring-progress");
+    progress.setAttribute("cx", "60");
+    progress.setAttribute("cy", "60");
+    progress.setAttribute("r", "46");
+    progress.setAttribute("data-value", String(value));
+
+    const strong = documentRef.createElement("strong");
+    strong.textContent = `${Math.round(value)}%`;
+
+    svg.appendChild(track);
+    svg.appendChild(progress);
+    ringWrap.appendChild(svg);
+    ringWrap.appendChild(strong);
+
+    const text = documentRef.createElement("p");
+    text.textContent = item.label || "";
+
+    article.appendChild(ringWrap);
+    article.appendChild(text);
+    container.appendChild(article);
+  });
+}
+
+function renderIksPillars(root, pillars) {
+  const container = root.querySelector(".iks-axis-list");
+  if (!container || !Array.isArray(pillars)) {
+    return;
+  }
+
+  const documentRef = getDocumentRef(root);
+  const published = pillars.filter((item) => item && item.isPublished !== false);
+  container.innerHTML = "";
+
+  published.forEach((item) => {
+    const li = documentRef.createElement("li");
+    li.setAttribute("tabindex", "0");
+    li.dataset.key = item.key || item.title || "Параметр";
+
+    const icon = documentRef.createElement("span");
+    icon.className = "iks-pill-icon";
+    icon.setAttribute("aria-hidden", "true");
+
+    const wrap = documentRef.createElement("div");
+    const title = documentRef.createElement("strong");
+    const text = documentRef.createElement("p");
+    title.textContent = item.title || "";
+    text.textContent = item.text || "";
+    wrap.appendChild(title);
+    wrap.appendChild(text);
+
+    li.appendChild(icon);
+    li.appendChild(wrap);
+    container.appendChild(li);
+  });
+}
+
+function renderExpertPositions(root, positions) {
+  const list = root.querySelector(".positions");
+  if (!list || !Array.isArray(positions)) {
+    return;
+  }
+
+  const documentRef = getDocumentRef(root);
+  const published = positions.filter((item) => item && item.isPublished !== false);
+  list.innerHTML = "";
+  published.forEach((item) => {
+    const li = documentRef.createElement("li");
+    li.textContent = item.text || "";
+    list.appendChild(li);
+  });
+}
+
+function renderExpertGallery(root, photos) {
+  const safePhotos = Array.isArray(photos)
+    ? photos
+        .filter((item) => item && item.isPublished !== false)
+        .map((item) => sanitizeSrc(item.image))
+        .filter(Boolean)
+    : [];
+
+  const fallbackPhotos = [
+    "/assets/expert-1.jpg",
+    "/assets/expert-2.jpg",
+    "/assets/expert-3.jpg",
+    "/assets/expert-4.jpg"
+  ];
+
+  const effectivePhotos = safePhotos.length ? safePhotos : fallbackPhotos;
+
+  if (typeof window !== "undefined") {
+    window.__artcommExpertPhotos = effectivePhotos;
+  }
+
+  const thumbsRoot = root.querySelector("#expertThumbs");
+  if (!thumbsRoot) {
+    return;
+  }
+
+  const documentRef = getDocumentRef(root);
+  thumbsRoot.innerHTML = "";
+  effectivePhotos.forEach((src, index) => {
+    const button = documentRef.createElement("button");
+    button.className = `thumb${index === 0 ? " is-active" : ""}`;
+    button.dataset.index = String(index);
+    button.setAttribute("tabindex", "-1");
+    button.style.backgroundImage = `url('${src}')`;
+    thumbsRoot.appendChild(button);
+  });
+
+  const totalNode = root.querySelector(".expert-photo-counter small");
+  if (totalNode) {
+    totalNode.textContent = `/ ${String(effectivePhotos.length).padStart(2, "0")}`;
+  }
+
+  thumbsRoot.hidden = effectivePhotos.length < 2;
+}
+
+function setContactCheckText(root, selector, prefix, linkLabel, href, suffix = "") {
+  const span = root.querySelector(selector);
+  if (!span) {
+    return;
+  }
+
+  const link = span.querySelector("a");
+  if (!link) {
+    return;
+  }
+
+  setLinkContent(link, { text: linkLabel, href });
+
+  const docRef = getDocumentRef(root);
+  span.textContent = "";
+  span.appendChild(docRef.createTextNode(`${prefix} `));
+  span.appendChild(link);
+  if (suffix) {
+    span.appendChild(docRef.createTextNode(suffix));
+  }
+}
+
 function applyHomeContent(root, content) {
   if (!content || !content.home) {
     return;
@@ -176,38 +469,10 @@ function applyHomeContent(root, content) {
     setTextContent(root, "#hero .hero-main h1", home.hero.title);
     setTextContent(root, ".hero-quote", home.hero.quote);
 
-    const actionButtons = Array.from(root.querySelectorAll(".hero-actions .btn"));
-    if (Array.isArray(home.hero.actions)) {
-      const publishedActions = home.hero.actions.filter((item) => item && item.isPublished !== false);
-      actionButtons.forEach((button, index) => {
-        const source = publishedActions[index];
-        if (!source) {
-          button.style.display = "none";
-          return;
-        }
-        button.style.display = "inline-flex";
-        button.textContent = source.label || button.textContent;
-        button.classList.toggle("btn-primary", source.variant === "primary");
-        button.classList.toggle("btn-secondary", source.variant !== "primary");
-
-        button.removeAttribute("data-modal");
-        button.removeAttribute("data-scroll");
-
-        if (source.type === "modal") {
-          const modalTarget =
-            typeof source.target === "string" && /^[a-z0-9-]{1,48}$/i.test(source.target)
-              ? source.target
-              : "test";
-          button.setAttribute("data-modal", modalTarget);
-        } else {
-          const scrollTarget =
-            typeof source.target === "string" && /^#[a-z0-9_-]{1,48}$/i.test(source.target)
-              ? source.target
-              : "#contacts";
-          button.setAttribute("data-scroll", scrollTarget);
-        }
-      });
-    }
+    applyActionButtons(root, ".hero-actions .btn", home.hero.actions || [], {
+      fallbackScroll: "#contacts",
+      fallbackModal: "test"
+    });
 
     const trustLine = root.querySelector(".trust-line");
     if (trustLine && Array.isArray(home.hero.trustLine)) {
@@ -224,6 +489,46 @@ function applyHomeContent(root, content) {
         li.appendChild(span);
         trustLine.appendChild(li);
       });
+    }
+  }
+
+  if (home.common) {
+    setTextContent(root, "#common .common-redo-head .section-kicker", home.common.kicker);
+    setTextContent(root, "#common .common-redo-head h2", home.common.title);
+    renderCommonPains(root, home.common.pains || []);
+
+    if (home.common.cta) {
+      setTextContent(root, "#common .common-redo-kicker", home.common.cta.kicker);
+      setTextContent(root, "#common .common-redo-title span:nth-child(1)", home.common.cta.titleLine1);
+      setTextContent(root, "#common .common-redo-title span:nth-child(2)", home.common.cta.titleLine2);
+      setTextContent(root, "#common .common-redo-cta-text span:nth-child(1)", home.common.cta.textLine1);
+      setTextContent(root, "#common .common-redo-cta-text span:nth-child(2)", home.common.cta.textLine2);
+
+      const commonButtons = Array.from(root.querySelectorAll("#common .common-redo-cta .stack-actions .btn"));
+      if (commonButtons.length >= 1) {
+        applyActionButton(
+          commonButtons[0],
+          {
+            label: home.common.cta.primaryLabel,
+            type: "scroll",
+            target: home.common.cta.primaryTarget,
+            variant: "primary"
+          },
+          "#ms"
+        );
+      }
+      if (commonButtons.length >= 2) {
+        applyActionButton(
+          commonButtons[1],
+          {
+            label: home.common.cta.secondaryLabel,
+            type: "scroll",
+            target: home.common.cta.secondaryTarget,
+            variant: "secondary"
+          },
+          "#contacts"
+        );
+      }
     }
   }
 
@@ -247,6 +552,88 @@ function applyHomeContent(root, content) {
       source.setAttribute("data-fallback-src", safeFallback);
       source.removeAttribute("src");
     }
+
+    setTextContent(root, "#ms .ms-story-lead h3", home.mediaStation.storyTitle);
+    setTextContent(root, "#ms .ms-story-lead p", home.mediaStation.storyText);
+    setTextContent(root, "#ms .ms-metric-main p", home.mediaStation.metricCaption);
+    const metricNode = root.querySelector("#ms .ms-metric-main .metric-value");
+    if (metricNode) {
+      const rawMetric = String(home.mediaStation.metricValue ?? "").trim();
+      const metricNumeric = Number.parseFloat(rawMetric.replace(",", ".").replace(/\s+/g, ""));
+      if (Number.isFinite(metricNumeric)) {
+        metricNode.dataset.counter = String(metricNumeric);
+      } else {
+        metricNode.removeAttribute("data-counter");
+      }
+      const metricSuffix = String(home.mediaStation.metricSuffix || "").trim();
+      if (metricSuffix) {
+        metricNode.dataset.suffix = metricSuffix;
+      } else {
+        metricNode.removeAttribute("data-suffix");
+      }
+      metricNode.textContent = `${rawMetric}${metricSuffix}`;
+    }
+
+    renderMetricStats(root, home.mediaStation.stats || []);
+    renderLoyaltyRings(root, home.mediaStation.loyalty || []);
+    applyActionButtons(root, "#ms .ms-tail-actions .btn", home.mediaStation.actions || [], {
+      fallbackModal: "ms-results",
+      fallbackScroll: "#ms"
+    });
+  }
+
+  if (home.iks) {
+    setTextContent(root, "#iks .iks-reset-head .section-kicker", home.iks.kicker);
+    setTextContent(root, "#iks .iks-reset-head h2", home.iks.title);
+    setTextContent(root, "#iks .iks-reset-head > p:not(.section-kicker)", home.iks.description);
+    renderIksPillars(root, home.iks.pillars || []);
+    applyActionButtons(root, "#iks .iks-actions .btn", home.iks.actions || [], {
+      fallbackModal: "diamond",
+      fallbackScroll: "#iks"
+    });
+  }
+
+  if (home.expert) {
+    setTextContent(root, "#expert .expert-copy-core .section-kicker", home.expert.kicker);
+    setTextContent(root, "#expert .expert-copy-core h2", home.expert.title);
+    setTextContent(root, "#expert .expert-lead-quote", home.expert.quote);
+    setTextContent(root, "#expert .expert-brief", home.expert.brief);
+    renderExpertPositions(root, home.expert.positions || []);
+    renderExpertGallery(root, home.expert.photos || []);
+    setTextContent(root, "#expert .expert-impact-item-primary strong", home.expert.impactPrimaryValue);
+    setTextContent(root, "#expert .expert-impact-item-primary p", home.expert.impactPrimaryLabel);
+    setTextContent(root, "#expert .expert-impact-item-outline strong", home.expert.impactSecondaryText);
+    applyActionButtons(root, "#expert .expert-actions .btn", home.expert.actions || [], {
+      fallbackModal: "achievements",
+      fallbackScroll: "#expert"
+    });
+  }
+
+  if (home.contactsSection) {
+    setTextContent(root, "#contacts .contacts-head .section-kicker", home.contactsSection.kicker);
+    setTextContent(root, "#contacts .contacts-head h2 span:nth-child(1)", home.contactsSection.titleLine1);
+    setTextContent(root, "#contacts .contacts-head h2 span:nth-child(2)", home.contactsSection.titleLine2);
+    setTextContent(root, "#contacts .contacts-brief-card h3", home.contactsSection.cardTitle);
+    setTextContent(root, "#contacts .contact-form h3", home.contactsSection.formTitle);
+    setTextContent(root, "#contacts .contact-form .contact-form-lead", home.contactsSection.formLead);
+    setTextContent(root, "#contacts .trusted-network-card h3", home.contactsSection.trustedTitle);
+
+    setContactCheckText(
+      root,
+      "#contacts .contact-check:nth-of-type(1) span",
+      home.contactsSection.policyPrefix || "",
+      home.contactsSection.policyLinkLabel || "",
+      home.contactsSection.policyLink || ""
+    );
+    setContactCheckText(
+      root,
+      "#contacts .contact-check:nth-of-type(2) span",
+      home.contactsSection.newsPrefix || "",
+      home.contactsSection.newsLinkLabel || "",
+      home.contactsSection.newsLink || "",
+      "."
+    );
+    setTextContent(root, "#contacts .contact-form .contact-form-submit", home.contactsSection.submitLabel);
   }
 
   if (home.contacts) {
