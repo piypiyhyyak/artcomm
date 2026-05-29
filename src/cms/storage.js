@@ -12,18 +12,13 @@ export { ROLE_ADMIN, ROLE_EDITOR, ROLE_VIEWER };
 
 const STORAGE_KEY = "artcomm.cms.state.v1";
 const SESSION_KEY = "artcomm.cms.session.v1";
-const LOGIN_GUARD_KEY = "artcomm.cms.login-guard.v1";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
-const LOGIN_ATTEMPT_LIMIT = 6;
-const LOGIN_COOLDOWN_MS = 1000 * 60 * 5;
 const ADMIN_ID = "admin-1";
-const REQUIRED_ADMIN_LOGIN = "admin";
+const DEFAULT_ADMIN_LOGIN = "admin";
 const CHARTER_FALLBACK_URL = "/assets/ustav-artkommunikacii.pdf";
-const REQUIRED_ADMIN_PASSWORD_HASH = "f6ee94ecb014f74f887b9dcc52daecf73ab3e3333320cadd98bcb59d895c52f5";
-const LEGACY_ADMIN_PASSWORD_HASH = "893cbcc2f9197dce1feea7c1e80486f27ae0be699408157d744928b600a7e82b";
-const SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
 const PENDING_SUFFIX_RE = /\s*\(файл добавляется\)\s*$/i;
 const PENDING_WITH_OPTIONAL_RE = /\s*\(при наличии,\s*файл добавляется\)\s*$/i;
+const LIST_REFINING_SUFFIX_RE = /\s*\(список уточняется\)\s*$/i;
 const FALLBACK_ABOUT_LIST_PATHS = [
   ["about", "documentsBasic"],
   ["about", "documentsMain"],
@@ -161,7 +156,10 @@ function normalizeDocumentTitle(title) {
   if (PENDING_WITH_OPTIONAL_RE.test(title)) {
     return title.replace(PENDING_WITH_OPTIONAL_RE, " (при наличии)").trim();
   }
-  return title.replace(PENDING_SUFFIX_RE, "").trim();
+  return title
+    .replace(PENDING_SUFFIX_RE, "")
+    .replace(LIST_REFINING_SUFFIX_RE, "")
+    .trim();
 }
 
 function normalizeAboutDocuments(content) {
@@ -325,19 +323,9 @@ function normalizeLoadedUsers(rawUsers) {
     const nextAdmin = {
       ...currentAdmin,
       id: ADMIN_ID,
-      login: REQUIRED_ADMIN_LOGIN,
+      login: DEFAULT_ADMIN_LOGIN,
       role: ROLE_ADMIN
     };
-
-    const shouldSetRequiredPassword =
-      !nextAdmin.passwordHash ||
-      nextAdmin.passwordHash === LEGACY_ADMIN_PASSWORD_HASH ||
-      nextAdmin.password === "artcomm-admin-2026";
-
-    if (shouldSetRequiredPassword) {
-      nextAdmin.passwordHash = REQUIRED_ADMIN_PASSWORD_HASH;
-      delete nextAdmin.password;
-    }
 
     users[adminIndex] = nextAdmin;
     return users;
@@ -346,9 +334,8 @@ function normalizeLoadedUsers(rawUsers) {
   users.unshift({
     ...cloneDeep(DEFAULT_USERS[0]),
     id: ADMIN_ID,
-    login: REQUIRED_ADMIN_LOGIN,
-    role: ROLE_ADMIN,
-    passwordHash: REQUIRED_ADMIN_PASSWORD_HASH
+    login: DEFAULT_ADMIN_LOGIN,
+    role: ROLE_ADMIN
   });
   return users;
 }
@@ -380,67 +367,6 @@ function normalizeState(parsed) {
 
   merged.version = CMS_VERSION;
   return merged;
-}
-
-export async function hashPassword(password) {
-  const plain = String(password || "");
-  if (typeof crypto !== "undefined" && crypto.subtle && typeof TextEncoder !== "undefined") {
-    const data = new TextEncoder().encode(plain);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    const bytes = Array.from(new Uint8Array(digest));
-    return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-
-  let hash = 2166136261;
-  for (let i = 0; i < plain.length; i += 1) {
-    hash ^= plain.charCodeAt(i);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function loadLoginGuard() {
-  if (!hasWindowStorage()) {
-    return { failedAttempts: 0, lockUntil: 0 };
-  }
-
-  try {
-    const raw = window.localStorage.getItem(LOGIN_GUARD_KEY);
-    if (!raw) {
-      return { failedAttempts: 0, lockUntil: 0 };
-    }
-    const parsed = JSON.parse(raw);
-    return {
-      failedAttempts: Number(parsed?.failedAttempts) || 0,
-      lockUntil: Number(parsed?.lockUntil) || 0
-    };
-  } catch {
-    return { failedAttempts: 0, lockUntil: 0 };
-  }
-}
-
-function saveLoginGuard(guard) {
-  if (!hasWindowStorage()) {
-    return;
-  }
-  window.localStorage.setItem(LOGIN_GUARD_KEY, JSON.stringify(guard));
-}
-
-function isLockedOut() {
-  const guard = loadLoginGuard();
-  const now = Date.now();
-  return guard.lockUntil > now ? guard : null;
-}
-
-function registerFailedAttempt() {
-  const guard = loadLoginGuard();
-  const failedAttempts = guard.failedAttempts + 1;
-  const lockUntil = failedAttempts >= LOGIN_ATTEMPT_LIMIT ? Date.now() + LOGIN_COOLDOWN_MS : 0;
-  saveLoginGuard({ failedAttempts, lockUntil });
-}
-
-function resetFailedAttempts() {
-  saveLoginGuard({ failedAttempts: 0, lockUntil: 0 });
 }
 
 function queueRemoteDraftSync(snapshotDraft) {
@@ -529,7 +455,17 @@ export async function refreshCmsStateFromServer() {
     }
 
     if (result.payload?.session) {
-      cacheSessionRaw(result.payload.session);
+      const current = readSessionRaw();
+      const loggedAt =
+        typeof result.payload.session.loggedAt === "string" && result.payload.session.loggedAt
+          ? result.payload.session.loggedAt
+          : typeof current?.loggedAt === "string" && current.loggedAt
+            ? current.loggedAt
+            : nowIso();
+      cacheSessionRaw({
+        ...result.payload.session,
+        loggedAt
+      });
     }
 
     if (result.payload?.state) {
@@ -564,7 +500,6 @@ export async function restoreSessionFromServer() {
       cacheStateRaw(normalizedState);
     }
 
-    resetFailedAttempts();
     return {
       session,
       state: normalizedState
@@ -687,7 +622,6 @@ export function resetCms() {
   const initial = createBaseState();
   saveCmsState(initial);
   clearSession();
-  resetFailedAttempts();
   return initial;
 }
 
@@ -711,14 +645,14 @@ function normalizeUsersInput(nextUsers) {
 
   return normalizeLoadedUsers((nextUsers || []).map((user, index) => {
     const isAdmin = user && user.id === ADMIN_ID;
-    const baseLogin = String(isAdmin ? REQUIRED_ADMIN_LOGIN : user?.login || "")
+    const baseLogin = String(isAdmin ? DEFAULT_ADMIN_LOGIN : user?.login || "")
       .trim()
       .toLowerCase()
       .replace(/\s+/g, "");
     const fallbackLogin = `user${index + 1}`;
     let loginCandidate = baseLogin || fallbackLogin;
 
-    if (!isAdmin && loginCandidate === REQUIRED_ADMIN_LOGIN) {
+    if (!isAdmin && loginCandidate === DEFAULT_ADMIN_LOGIN) {
       loginCandidate = fallbackLogin;
     }
 
@@ -735,12 +669,11 @@ function normalizeUsersInput(nextUsers) {
       name: String(user?.name || "").trim() || "Пользователь",
       login: safeLogin,
       role: roles.has(user?.role) ? user.role : ROLE_VIEWER,
-      createdAt: user.createdAt || nowIso(),
-      passwordHash: user.passwordHash || ""
+      createdAt: user.createdAt || nowIso()
     };
     if (isAdmin) {
       normalized.role = ROLE_ADMIN;
-      normalized.login = REQUIRED_ADMIN_LOGIN;
+      normalized.login = DEFAULT_ADMIN_LOGIN;
     }
     return normalized;
   }));
@@ -754,15 +687,15 @@ export function setUsers(nextUsers) {
 }
 
 export async function setUsersRemote(nextUsers) {
-  const localState = setUsers(nextUsers);
   if (!hasFetchApi()) {
-    return localState;
+    throw new Error("server_unavailable");
   }
 
   try {
+    const prepared = normalizeUsersInput(nextUsers);
     const result = await requestCms("/users", {
       method: "POST",
-      body: { users: localState.users },
+      body: { users: prepared },
       allowUnauthorized: true
     });
     if (result.ok && result.payload?.state) {
@@ -770,136 +703,58 @@ export async function setUsersRemote(nextUsers) {
       cacheStateRaw(normalized);
       return normalized;
     }
-  } catch {
-    // keep local state if remote sync fails
-  }
-
-  return localState;
-}
-
-async function verifyCredentials(login, password, options = {}) {
-  const { touchGuard = true } = options;
-
-  const lock = isLockedOut();
-  if (lock) {
-    return {
-      user: null,
-      error: "locked",
-      retryAt: lock.lockUntil
-    };
-  }
-
-  const state = loadCmsState();
-  const passwordHash = await hashPassword(password);
-  const user = state.users.find((item) => {
-    if (item.login !== login) {
-      return false;
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
     }
-    if (item.passwordHash) {
-      return item.passwordHash === passwordHash;
-    }
-    return item.password === password;
-  });
-
-  if (!user) {
-    if (touchGuard) {
-      registerFailedAttempt();
-    }
-    return {
-      user: null,
-      error: "invalid"
-    };
+    throw error;
   }
-
-  if (!user.passwordHash) {
-    const upgradedUsers = state.users.map((item) =>
-      item.id === user.id
-        ? {
-            ...item,
-            passwordHash
-          }
-        : item
-    );
-    upgradedUsers.forEach((item) => {
-      delete item.password;
-    });
-    state.users = upgradedUsers;
-    saveCmsState(state);
-  }
-
-  if (touchGuard) {
-    resetFailedAttempts();
-  }
-
-  return {
-    user,
-    error: null
-  };
+  throw new Error("server_unavailable");
 }
 
 export async function authenticate(login, password) {
   const normalizedLogin = String(login || "").trim().toLowerCase();
 
-  if (hasFetchApi()) {
-    try {
-      const result = await requestCms("/login", {
-        method: "POST",
-        body: { login: normalizedLogin, password },
-        allowUnauthorized: true
-      });
+  if (!hasFetchApi()) {
+    return { session: null, error: "unavailable" };
+  }
 
-      if (result.ok && result.payload?.session) {
-        const session = result.payload.session;
-        cacheSessionRaw(session);
+  try {
+    const result = await requestCms("/login", {
+      method: "POST",
+      body: { login: normalizedLogin, password },
+      allowUnauthorized: true
+    });
 
-        if (result.payload?.state) {
-          const normalizedState = normalizeState(result.payload.state);
-          cacheStateRaw(normalizedState);
-        }
+    if (result.ok && result.payload?.session) {
+      const session = result.payload.session;
+      cacheSessionRaw(session);
 
-        resetFailedAttempts();
-        return { session, error: null };
+      if (result.payload?.state) {
+        const normalizedState = normalizeState(result.payload.state);
+        cacheStateRaw(normalizedState);
       }
-    } catch (error) {
-      if (error instanceof CmsApiError) {
-        if (error.code === "locked") {
-          return {
-            session: null,
-            error: "locked",
-            retryAt: error.retryAt
-          };
-        }
-        if (error.code === "invalid") {
-          return { session: null, error: "invalid" };
-        }
-      }
-      // network errors fallback to local mode
+
+      return { session, error: null };
     }
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      if (error.code === "locked") {
+        return {
+          session: null,
+          error: "locked",
+          retryAt: error.retryAt
+        };
+      }
+      if (error.code === "invalid") {
+        return { session: null, error: "invalid" };
+      }
+      return { session: null, error: error.code || "invalid" };
+    }
+    return { session: null, error: "unavailable" };
   }
 
-  const check = await verifyCredentials(normalizedLogin, password, { touchGuard: true });
-  if (!check.user) {
-    return {
-      session: null,
-      error: check.error,
-      retryAt: check.retryAt
-    };
-  }
-
-  const session = {
-    id: check.user.id,
-    name: check.user.name,
-    login: check.user.login,
-    role: check.user.role,
-    loggedAt: nowIso()
-  };
-
-  cacheSessionRaw(session);
-  return { session, error: null };
-}
-
-export async function verifySensitiveAuth(login, password) {
-  return verifyCredentials(String(login || "").trim().toLowerCase(), password, { touchGuard: true });
+  return { session: null, error: "invalid" };
 }
 
 export function getSession() {
@@ -950,6 +805,45 @@ export function clearSession() {
   }
 }
 
+export async function verifySensitiveGate(gate = null) {
+  if (!gate || typeof gate !== "object") {
+    throw new Error("invalid_gate");
+  }
+
+  const authLogin = String(gate.authLogin || "").trim().toLowerCase();
+  const authPassword = String(gate.authPassword || "");
+  const codeword = String(gate.codeword || "").trim();
+  const sessionUserId = String(gate.sessionUserId || "").trim();
+
+  if (!authLogin || !authPassword || !codeword || !sessionUserId) {
+    throw new Error("invalid_gate");
+  }
+  if (!hasFetchApi()) {
+    throw new Error("server_unavailable");
+  }
+
+  try {
+    await requestCms("/verify-gate", {
+      method: "POST",
+      body: {
+        gate: {
+          authLogin,
+          authPassword,
+          codeword,
+          sessionUserId
+        }
+      },
+      allowUnauthorized: true
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
+    }
+    throw error;
+  }
+}
+
 export async function setUserPassword(userId, password, gate = null) {
   const normalizedPassword = String(password || "").trim();
   if (normalizedPassword.length < 8) {
@@ -969,68 +863,37 @@ export async function setUserPassword(userId, password, gate = null) {
     throw new Error("invalid_gate");
   }
 
-  const codewordHash = await hashPassword(codeword);
-  if (codewordHash !== SECURITY_CODEWORD_HASH) {
-    throw new Error("invalid_codeword");
+  if (!hasFetchApi()) {
+    throw new Error("server_unavailable");
   }
 
-  const verification = await verifyCredentials(authLogin, authPassword, { touchGuard: true });
-  if (!verification.user) {
-    if (verification.error === "locked") {
-      throw new Error("locked");
-    }
-    throw new Error("invalid_auth");
-  }
-
-  if (verification.user.id !== sessionUserId || verification.user.role !== ROLE_ADMIN) {
-    throw new Error("forbidden");
-  }
-
-  const state = loadCmsState();
-  const hashed = await hashPassword(normalizedPassword);
-  state.users = state.users.map((user) =>
-    user.id === userId
-      ? {
-          ...user,
-          passwordHash: hashed
+  try {
+    const result = await requestCms("/user-password", {
+      method: "POST",
+      body: {
+        userId,
+        password: normalizedPassword,
+        gate: {
+          authLogin,
+          authPassword,
+          codeword,
+          sessionUserId
         }
-      : user
-  );
-  state.users.forEach((user) => {
-    delete user.password;
-  });
-  saveCmsState(state);
-
-  if (hasFetchApi()) {
-    try {
-      const result = await requestCms("/user-password", {
-        method: "POST",
-        body: {
-          userId,
-          password: normalizedPassword,
-          gate: {
-            authLogin,
-            authPassword,
-            codeword,
-            sessionUserId
-          }
-        },
-        allowUnauthorized: true
-      });
-      if (result.ok && result.payload?.state) {
-        const normalized = normalizeState(result.payload.state);
-        cacheStateRaw(normalized);
-        return normalized;
-      }
-    } catch (error) {
-      if (error instanceof CmsApiError) {
-        throw new Error(error.code);
-      }
-      throw error;
+      },
+      allowUnauthorized: true
+    });
+    if (result.ok && result.payload?.state) {
+      const normalized = normalizeState(result.payload.state);
+      cacheStateRaw(normalized);
+      return normalized;
     }
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
+    }
+    throw error;
   }
-
-  return state;
+  throw new Error("server_unavailable");
 }
 
 export function canEdit(role) {

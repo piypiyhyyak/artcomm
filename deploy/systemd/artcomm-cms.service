@@ -8,6 +8,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/Artcomm
 Environment=NODE_ENV=production
+EnvironmentFile=-/etc/artcomm-cms.env
 Environment=CMS_HOST=127.0.0.1
 Environment=CMS_PORT=8787
 Environment=CMS_ROOT_DIR=/var/www/Artcomm
@@ -18,7 +19,14 @@ Restart=always
 RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=full
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
 ReadWritePaths=/var/lib/artcomm-cms /var/www/html/assets
 
 [Install]

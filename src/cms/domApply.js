@@ -67,7 +67,7 @@ function createLinkItem(documentRef, item) {
   } else {
     const placeholder = documentRef.createElement("span");
     placeholder.className = "about-link-pending";
-    placeholder.textContent = safeTitle + (safeTitle.includes("добавляется") ? "" : " (файл добавляется)");
+    placeholder.textContent = safeTitle;
     li.appendChild(placeholder);
   }
 
@@ -99,7 +99,7 @@ function createLinkNode(documentRef, item) {
 
   const placeholder = documentRef.createElement("span");
   placeholder.className = "about-link-pending";
-  placeholder.textContent = safeTitle + (safeTitle.includes("добавляется") ? "" : " (файл добавляется)");
+  placeholder.textContent = safeTitle;
   return placeholder;
 }
 

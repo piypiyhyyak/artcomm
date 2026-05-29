@@ -6,12 +6,23 @@ import { fetchPublishedContentFromServer } from './cms/storage';
 export default function AboutApp() {
   useEffect(() => {
     let isDisposed = false;
+    let cleanupAboutInit = null;
     (async () => {
       const remoteContent = await fetchPublishedContentFromServer();
       if (isDisposed) {
         return;
       }
       applyPublishedCms(document, remoteContent || undefined);
+
+      import('./initAbout')
+        .then(({ default: initAbout }) => {
+          if (!isDisposed) {
+            cleanupAboutInit = initAbout();
+          }
+        })
+        .catch(() => {
+          // Keep page usable even if menu boot fails.
+        });
     })().catch(() => {
       if (!isDisposed) {
         applyPublishedCms(document);
@@ -20,6 +31,9 @@ export default function AboutApp() {
 
     return () => {
       isDisposed = true;
+      if (typeof cleanupAboutInit === 'function') {
+        cleanupAboutInit();
+      }
     };
   }, []);
 

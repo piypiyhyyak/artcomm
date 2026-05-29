@@ -14,7 +14,6 @@ import {
   clearSession,
   flushDraftSync,
   getSession,
-  hashPassword,
   loadCmsState,
   makeId,
   publishDraft,
@@ -23,7 +22,7 @@ import {
   saveDraft,
   setUserPassword,
   setUsersRemote,
-  verifySensitiveAuth
+  verifySensitiveGate
 } from "./cms/storage";
 
 const NAV_ITEMS = [
@@ -39,8 +38,6 @@ const NAV_ITEMS = [
 const ACCEPT_IMAGES = "image/*";
 const ACCEPT_DOCS = ".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp";
 const ACCEPT_VIDEO = "video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg";
-const SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
-
 function listToTableText(rows) {
   if (!Array.isArray(rows)) {
     return "";
@@ -332,7 +329,8 @@ function ImageListEditor({
   idPrefix,
   onUploadFile,
   onDeleteFile,
-  uploadFolder
+  uploadFolder,
+  thumbPreset = "default"
 }) {
   const safeItems = Array.isArray(items) ? items : [];
 
@@ -378,15 +376,19 @@ function ImageListEditor({
         items={safeItems}
         readonly={readonly}
         layout="horizontal"
-        itemClassName="ap-item-media"
+        itemClassName={`ap-item-media ap-item-media-${thumbPreset}`}
         getKey={(item, index) => item.id || `${idPrefix}-${index}`}
         onReorder={onChange}
         renderItem={(item, index) => {
           const preview = localPreviewMap[item.id] || item[imageKey];
           return (
             <div className="ap-item-body">
-              <div className="ap-thumb-wrap">
-                {preview ? <img src={preview} alt="preview" className="ap-thumb" /> : <div className="ap-thumb-empty">Нет превью</div>}
+              <div className={`ap-thumb-wrap ap-thumb-wrap-${thumbPreset}`}>
+                {preview ? (
+                  <img src={preview} alt="preview" className={`ap-thumb ap-thumb-${thumbPreset}`} />
+                ) : (
+                  <div className="ap-thumb-empty">Нет превью</div>
+                )}
               </div>
 
               <div className="ap-item-fields">
@@ -420,36 +422,38 @@ function ImageListEditor({
                     onChange={(event) => updateAt(index, { isPublished: event.target.checked })}
                   />
 
-                  <UploadButton
-                    label="Заменить файл"
-                    accept={ACCEPT_IMAGES}
-                    disabled={readonly}
-                    onPick={async (file) => {
-                      const previousPath = item[imageKey];
-                      const path = await onUploadFile(file, uploadFolder);
-                      if (!path) {
-                        return;
-                      }
-                      updateAt(index, { [imageKey]: path, [altKey]: item[altKey] || getFileBaseName(file.name) });
-                      onPickPreview(item.id, file);
-                      if (previousPath && previousPath !== path) {
-                        await onDeleteFile(previousPath);
-                      }
-                    }}
-                  />
+                  <div className="ap-action-buttons">
+                    <button
+                      type="button"
+                      className="ap-btn ap-btn-danger"
+                      disabled={readonly}
+                      onClick={async () => {
+                        await onDeleteFile(item[imageKey]);
+                        const next = safeItems.filter((_, idx) => idx !== index);
+                        onChange(next);
+                      }}
+                    >
+                      Удалить
+                    </button>
 
-                  <button
-                    type="button"
-                    className="ap-btn ap-btn-danger"
-                    disabled={readonly}
-                    onClick={async () => {
-                      await onDeleteFile(item[imageKey]);
-                      const next = safeItems.filter((_, idx) => idx !== index);
-                      onChange(next);
-                    }}
-                  >
-                    Удалить
-                  </button>
+                    <UploadButton
+                      label="Заменить файл"
+                      accept={ACCEPT_IMAGES}
+                      disabled={readonly}
+                      onPick={async (file) => {
+                        const previousPath = item[imageKey];
+                        const path = await onUploadFile(file, uploadFolder);
+                        if (!path) {
+                          return;
+                        }
+                        updateAt(index, { [imageKey]: path, [altKey]: item[altKey] || getFileBaseName(file.name) });
+                        onPickPreview(item.id, file);
+                        if (previousPath && previousPath !== path) {
+                          await onDeleteFile(previousPath);
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -530,38 +534,40 @@ function DocumentListEditor({ title, subtitle, items, readonly, onChange, idPref
                   onChange={(event) => updateAt(index, { isPublished: event.target.checked })}
                 />
 
-                <UploadButton
-                  label="Заменить файл"
-                  accept={ACCEPT_DOCS}
-                  disabled={readonly}
-                  onPick={async (file) => {
-                    const previousPath = item.url;
-                    const path = await onUploadFile(file, uploadFolder);
-                    if (!path) {
-                      return;
-                    }
-                    updateAt(index, {
-                      title: item.title || getFileBaseName(file.name),
-                      url: path
-                    });
-                    if (previousPath && previousPath !== path) {
-                      await onDeleteFile(previousPath);
-                    }
-                  }}
-                />
+                <div className="ap-action-buttons">
+                  <button
+                    type="button"
+                    className="ap-btn ap-btn-danger"
+                    disabled={readonly}
+                    onClick={async () => {
+                      await onDeleteFile(item.url);
+                      const next = safeItems.filter((_, idx) => idx !== index);
+                      onChange(next);
+                    }}
+                  >
+                    Удалить
+                  </button>
 
-                <button
-                  type="button"
-                  className="ap-btn ap-btn-danger"
-                  disabled={readonly}
-                  onClick={async () => {
-                    await onDeleteFile(item.url);
-                    const next = safeItems.filter((_, idx) => idx !== index);
-                    onChange(next);
-                  }}
-                >
-                  Удалить
-                </button>
+                  <UploadButton
+                    label="Заменить файл"
+                    accept={ACCEPT_DOCS}
+                    disabled={readonly}
+                    onPick={async (file) => {
+                      const previousPath = item.url;
+                      const path = await onUploadFile(file, uploadFolder);
+                      if (!path) {
+                        return;
+                      }
+                      updateAt(index, {
+                        title: item.title || getFileBaseName(file.name),
+                        url: path
+                      });
+                      if (previousPath && previousPath !== path) {
+                        await onDeleteFile(previousPath);
+                      }
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1128,13 +1134,13 @@ function VideoEditor({ media, readonly, onChange, localPreviewMap, onPickPreview
                   if (!path) {
                     return;
                   }
-                  updateVideoPath(path);
-                  onPickPreview("videoPrimary", file);
-                  if (previousPath && previousPath !== path) {
-                    await onDeleteFile(previousPath);
-                  }
-                }}
-              />
+                      updateVideoPath(path);
+                      onPickPreview("videoPrimary", file);
+                      if (previousPath && previousPath !== path) {
+                        await onDeleteFile(previousPath, { ignoreDraftPathOccurrences: 3 });
+                      }
+                    }}
+                  />
 
               <button
                 type="button"
@@ -1143,7 +1149,7 @@ function VideoEditor({ media, readonly, onChange, localPreviewMap, onPickPreview
                 onClick={async () => {
                   const previousPath = currentPath;
                   updateVideoPath("");
-                  await onDeleteFile(previousPath);
+                  await onDeleteFile(previousPath, { ignoreDraftPathOccurrences: 3 });
                 }}
               >
                 Удалить видео
@@ -1156,6 +1162,426 @@ function VideoEditor({ media, readonly, onChange, localPreviewMap, onPickPreview
   );
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function makeHtmlSandbox(bodyHtml) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const box = document.createElement("div");
+  box.innerHTML = String(bodyHtml || "");
+  return box;
+}
+
+function getNodesText(root, selector) {
+  if (!root) {
+    return [];
+  }
+  return Array.from(root.querySelectorAll(selector))
+    .map((item) => item.textContent || "")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getModalEditorKind(modalId) {
+  const id = String(modalId || "");
+  if (id === "ms-results") return "ms-results";
+  if (id === "ms-participants") return "quotes";
+  if (id === "ms-minister") return "quote-note";
+  if (id === "sovereignty") return "lead-list-note";
+  if (id === "formats") return "cards";
+  if (id === "methodology") return "steps";
+  if (id === "team") return "team";
+  if (id === "awards") return "list";
+  if (id === "achievements") return "achievements";
+  return "paragraphs";
+}
+
+function parseModalBodyForEditor(modalId, bodyHtml) {
+  const kind = getModalEditorKind(modalId);
+  const root = makeHtmlSandbox(bodyHtml);
+  const fallbackText = root ? (root.textContent || "").trim() : "";
+
+  if (kind === "ms-results") {
+    const metrics = getNodesText(root, ".numbers-12 span");
+    const bars = root
+      ? Array.from(root.querySelectorAll(".bar-item")).map((item) => {
+          const label = (item.querySelector("span")?.textContent || "").trim();
+          const valueRaw =
+            (item.querySelector("i")?.getAttribute("data-value") || "").trim() ||
+            (item.querySelector("strong")?.textContent || "").replace("%", "").trim();
+          return [label, valueRaw].filter(Boolean).join(" | ");
+        })
+      : [];
+    return {
+      kind,
+      metricsText: listToMultiline(metrics),
+      barsText: listToMultiline(bars)
+    };
+  }
+
+  if (kind === "quotes") {
+    return {
+      kind,
+      quotesText: listToMultiline(getNodesText(root, "blockquote"))
+    };
+  }
+
+  if (kind === "quote-note") {
+    const paragraphs = getNodesText(root, "p:not(.modal-note)");
+    return {
+      kind,
+      quote: paragraphs[0] || "",
+      note: (root?.querySelector(".modal-note")?.textContent || "").trim()
+    };
+  }
+
+  if (kind === "lead-list-note") {
+    const paragraphs = getNodesText(root, "p:not(.modal-note)");
+    return {
+      kind,
+      lead: paragraphs[0] || "",
+      pointsText: listToMultiline(getNodesText(root, "ul li")),
+      note: (root?.querySelector(".modal-note")?.textContent || "").trim()
+    };
+  }
+
+  if (kind === "cards") {
+    const lines = root
+      ? Array.from(root.querySelectorAll(".format-cards article")).map((item) => {
+          const title = (item.querySelector("h4")?.textContent || "").trim();
+          const duration = (item.querySelector("p:not(.tags)")?.textContent || "").trim();
+          const tags = (item.querySelector(".tags")?.textContent || "").trim();
+          return [title, duration, tags].filter(Boolean).join(" | ");
+        })
+      : [];
+    return { kind, cardsText: listToMultiline(lines) };
+  }
+
+  if (kind === "steps") {
+    return {
+      kind,
+      stepsText: listToMultiline(getNodesText(root, ".timeline li"))
+    };
+  }
+
+  if (kind === "team") {
+    const lines = root
+      ? Array.from(root.querySelectorAll(".team-grid article")).map((item) => {
+          const initials = (item.querySelector("i")?.textContent || "").trim();
+          const name = (item.querySelector("span")?.textContent || "").trim();
+          const role = (item.querySelector("small")?.textContent || "").trim();
+          return [initials, name, role].filter(Boolean).join(" | ");
+        })
+      : [];
+    return { kind, membersText: listToMultiline(lines) };
+  }
+
+  if (kind === "list") {
+    return {
+      kind,
+      listText: listToMultiline(getNodesText(root, "ul li"))
+    };
+  }
+
+  if (kind === "achievements") {
+    const cards = root
+      ? Array.from(root.querySelectorAll(".achievements-grid article")).map((item) => {
+          const value = (item.querySelector("strong")?.textContent || "").trim();
+          const label = (item.querySelector("span")?.textContent || "").trim();
+          return [value, label].filter(Boolean).join(" | ");
+        })
+      : [];
+    const note = (root?.querySelector("p")?.textContent || "").trim();
+    return {
+      kind,
+      cardsText: listToMultiline(cards),
+      note
+    };
+  }
+
+  const paragraphItems = getNodesText(root, "p");
+  return {
+    kind,
+    paragraphsText: listToMultiline(paragraphItems.length ? paragraphItems : multilineToList(fallbackText))
+  };
+}
+
+function buildModalBodyFromEditor(modalId, data) {
+  const kind = getModalEditorKind(modalId);
+
+  if (kind === "ms-results") {
+    const metrics = multilineToList(data.metricsText || "");
+    const bars = multilineToList(data.barsText || "");
+    const metricsHtml = metrics.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+    const barsHtml = bars
+      .map((line) => line.split("|").map((part) => part.trim()))
+      .filter((parts) => parts[0] || parts[1])
+      .map((parts) => {
+        const label = escapeHtml(parts[0] || "Показатель");
+        const rawValue = (parts[1] || "0").replace("%", "").trim();
+        const numeric = Number.parseFloat(rawValue.replace(",", "."));
+        const safeValue = Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : 0;
+        const labelValue = `${String(rawValue || "0").replace(".", ",")}%`;
+        return `<div class="bar-item"><span>${label}</span><strong>${escapeHtml(labelValue)}</strong><div class="bar"><i data-value="${safeValue}"></i></div></div>`;
+      })
+      .join("");
+    return `<div class="modal-grid numbers-12">${metricsHtml}</div><div class="bars modal-bars">${barsHtml}</div>`;
+  }
+
+  if (kind === "quotes") {
+    return multilineToList(data.quotesText || "")
+      .map((line) => `<blockquote>${escapeHtml(line)}</blockquote>`)
+      .join("");
+  }
+
+  if (kind === "quote-note") {
+    const quote = String(data.quote || "").trim();
+    const note = String(data.note || "").trim();
+    return `${quote ? `<p>${escapeHtml(quote)}</p>` : ""}${note ? `<p class="modal-note">${escapeHtml(note)}</p>` : ""}`;
+  }
+
+  if (kind === "lead-list-note") {
+    const lead = String(data.lead || "").trim();
+    const points = multilineToList(data.pointsText || "");
+    const note = String(data.note || "").trim();
+    const listHtml = points.length ? `<ul>${points.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : "";
+    return `${lead ? `<p>${escapeHtml(lead)}</p>` : ""}${listHtml}${note ? `<p class="modal-note">${escapeHtml(note)}</p>` : ""}`;
+  }
+
+  if (kind === "cards") {
+    const cards = multilineToList(data.cardsText || "")
+      .map((line) => line.split("|").map((part) => part.trim()))
+      .filter((parts) => parts[0] || parts[1] || parts[2])
+      .map((parts) => {
+        const title = escapeHtml(parts[0] || "Новый формат");
+        const duration = escapeHtml(parts[1] || "");
+        const tags = escapeHtml(parts[2] || "");
+        return `<article><h4>${title}</h4><p>${duration}</p><p class="tags">${tags}</p></article>`;
+      })
+      .join("");
+    return `<div class="modal-grid format-cards">${cards}</div>`;
+  }
+
+  if (kind === "steps") {
+    const steps = multilineToList(data.stepsText || "");
+    return `<ol class="timeline">${steps.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ol>`;
+  }
+
+  if (kind === "team") {
+    const members = multilineToList(data.membersText || "")
+      .map((line) => line.split("|").map((part) => part.trim()))
+      .filter((parts) => parts[0] || parts[1] || parts[2])
+      .map((parts) => {
+        const initials = escapeHtml(parts[0] || "XX");
+        const name = escapeHtml(parts[1] || "Новый участник");
+        const role = escapeHtml(parts[2] || "Роль");
+        return `<article><i>${initials}</i><span>${name}</span><small>${role}</small></article>`;
+      })
+      .join("");
+    return `<div class="modal-grid team-grid">${members}</div>`;
+  }
+
+  if (kind === "list") {
+    const items = multilineToList(data.listText || "");
+    return `<ul>${items.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+  }
+
+  if (kind === "achievements") {
+    const cards = multilineToList(data.cardsText || "")
+      .map((line) => line.split("|").map((part) => part.trim()))
+      .filter((parts) => parts[0] || parts[1])
+      .map((parts) => `<article><strong>${escapeHtml(parts[0] || "0")}</strong><span>${escapeHtml(parts[1] || "")}</span></article>`)
+      .join("");
+    const note = String(data.note || "").trim();
+    return `<div class="modal-grid achievements-grid">${cards}</div>${note ? `<p>${escapeHtml(note)}</p>` : ""}`;
+  }
+
+  const paragraphs = multilineToList(data.paragraphsText || "");
+  return paragraphs.map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+function ModalBodyEditor({ entry, readonly, onChange }) {
+  const editorData = useMemo(
+    () => parseModalBodyForEditor(entry.id, entry.bodyHtml),
+    [entry.id, entry.bodyHtml]
+  );
+
+  const kind = editorData.kind;
+  const updateBody = (patch) => {
+    const nextData = { ...editorData, ...patch };
+    onChange(buildModalBodyFromEditor(entry.id, nextData));
+  };
+
+  if (kind === "ms-results") {
+    return (
+      <div className="ap-grid ap-grid-2">
+        <TextField
+          label="Показатели (каждый с новой строки)"
+          rows={8}
+          value={editorData.metricsText}
+          disabled={readonly}
+          onChange={(event) => updateBody({ metricsText: event.target.value })}
+        />
+        <TextField
+          label="Шкалы (формат: Название | Процент)"
+          rows={8}
+          value={editorData.barsText}
+          disabled={readonly}
+          onChange={(event) => updateBody({ barsText: event.target.value })}
+        />
+      </div>
+    );
+  }
+
+  if (kind === "quotes") {
+    return (
+      <TextField
+        label="Отзывы (каждый отзыв с новой строки)"
+        rows={8}
+        value={editorData.quotesText}
+        disabled={readonly}
+        onChange={(event) => updateBody({ quotesText: event.target.value })}
+      />
+    );
+  }
+
+  if (kind === "quote-note") {
+    return (
+      <div className="ap-grid ap-grid-2">
+        <TextField
+          label="Основная цитата"
+          rows={5}
+          value={editorData.quote}
+          disabled={readonly}
+          onChange={(event) => updateBody({ quote: event.target.value })}
+        />
+        <TextField
+          label="Подпись / источник"
+          rows={5}
+          value={editorData.note}
+          disabled={readonly}
+          onChange={(event) => updateBody({ note: event.target.value })}
+        />
+      </div>
+    );
+  }
+
+  if (kind === "lead-list-note") {
+    return (
+      <div className="ap-grid ap-grid-2">
+        <TextField
+          label="Вводный текст"
+          rows={5}
+          value={editorData.lead}
+          disabled={readonly}
+          onChange={(event) => updateBody({ lead: event.target.value })}
+        />
+        <TextField
+          label="Список пунктов (каждый с новой строки)"
+          rows={5}
+          value={editorData.pointsText}
+          disabled={readonly}
+          onChange={(event) => updateBody({ pointsText: event.target.value })}
+        />
+        <TextField
+          label="Примечание"
+          rows={3}
+          value={editorData.note}
+          disabled={readonly}
+          onChange={(event) => updateBody({ note: event.target.value })}
+        />
+      </div>
+    );
+  }
+
+  if (kind === "cards") {
+    return (
+      <TextField
+        label="Карточки (формат строки: Заголовок | Длительность | Теги)"
+        rows={8}
+        value={editorData.cardsText}
+        disabled={readonly}
+        onChange={(event) => updateBody({ cardsText: event.target.value })}
+      />
+    );
+  }
+
+  if (kind === "steps") {
+    return (
+      <TextField
+        label="Шаги методологии (каждый шаг с новой строки)"
+        rows={6}
+        value={editorData.stepsText}
+        disabled={readonly}
+        onChange={(event) => updateBody({ stepsText: event.target.value })}
+      />
+    );
+  }
+
+  if (kind === "team") {
+    return (
+      <TextField
+        label="Команда (формат строки: Инициалы | Имя | Роль)"
+        rows={10}
+        value={editorData.membersText}
+        disabled={readonly}
+        onChange={(event) => updateBody({ membersText: event.target.value })}
+      />
+    );
+  }
+
+  if (kind === "list") {
+    return (
+      <TextField
+        label="Список (каждый пункт с новой строки)"
+        rows={7}
+        value={editorData.listText}
+        disabled={readonly}
+        onChange={(event) => updateBody({ listText: event.target.value })}
+      />
+    );
+  }
+
+  if (kind === "achievements") {
+    return (
+      <div className="ap-grid ap-grid-2">
+        <TextField
+          label="Факты (формат строки: Значение | Подпись)"
+          rows={8}
+          value={editorData.cardsText}
+          disabled={readonly}
+          onChange={(event) => updateBody({ cardsText: event.target.value })}
+        />
+        <TextField
+          label="Дополнительный текст"
+          rows={8}
+          value={editorData.note}
+          disabled={readonly}
+          onChange={(event) => updateBody({ note: event.target.value })}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <TextField
+      label="Текст модального окна (каждая строка станет отдельным абзацем)"
+      rows={8}
+      value={editorData.paragraphsText}
+      disabled={readonly}
+      onChange={(event) => updateBody({ paragraphsText: event.target.value })}
+    />
+  );
+}
+
 export default function AdminApp() {
   const [session, setSession] = useState(() => getSession());
   const [cmsState, setCmsState] = useState(() => loadCmsState());
@@ -1165,15 +1591,20 @@ export default function AdminApp() {
   const [localImagePreviews, setLocalImagePreviews] = useState({});
   const [localVideoPreviews, setLocalVideoPreviews] = useState({});
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
-  const [userPasswordDrafts, setUserPasswordDrafts] = useState({});
-  const [userPasswordConfirmDrafts, setUserPasswordConfirmDrafts] = useState({});
+  const [userEditDrafts, setUserEditDrafts] = useState({});
+  const [editingUsers, setEditingUsers] = useState({});
   const [passwordGateForm, setPasswordGateForm] = useState({ login: "", password: "", codeword: "" });
+  const [passwordGateUserId, setPasswordGateUserId] = useState("");
+  const [passwordGateBusy, setPasswordGateBusy] = useState(false);
+  const [expandedUsers, setExpandedUsers] = useState({});
 
   const draft = cmsState.draft;
   const readonly = !session || !canEdit(session.role);
   const editLocked = readonly || isProcessingFiles;
   const canPublishNow = session && canPublish(session.role);
   const canManageUsersNow = session && canManageUsers(session.role);
+  const isPasswordGateOpen = Boolean(passwordGateUserId);
+  const passwordGateTargetUser = isPasswordGateOpen ? cmsState.users.find((user) => user.id === passwordGateUserId) : null;
 
   const visibleNav = useMemo(
     () => NAV_ITEMS.filter((item) => item.key !== "users" || canManageUsersNow),
@@ -1185,6 +1616,29 @@ export default function AdminApp() {
       setTab("dashboard");
     }
   }, [tab, canManageUsersNow]);
+
+  useEffect(() => {
+    document.body.classList.toggle("modal-open", isPasswordGateOpen);
+    return () => {
+      document.body.classList.remove("modal-open");
+    };
+  }, [isPasswordGateOpen]);
+
+  useEffect(() => {
+    if (!isPasswordGateOpen) {
+      return undefined;
+    }
+    function onEsc(event) {
+      if (event.key === "Escape" && !passwordGateBusy) {
+        setPasswordGateUserId("");
+        setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
+      }
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => {
+      window.removeEventListener("keydown", onEsc);
+    };
+  }, [isPasswordGateOpen, passwordGateBusy]);
 
   useEffect(() => {
     if (session) {
@@ -1287,8 +1741,216 @@ export default function AdminApp() {
 
   async function updateUsers(mutator, message = "Пользователи обновлены") {
     const nextUsers = mutator(cloneDeep(cmsState.users));
-    const nextState = await setUsersRemote(nextUsers);
-    syncState(nextState, message);
+    try {
+      const nextState = await setUsersRemote(nextUsers);
+      syncState(nextState, message);
+      return nextState;
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "users_update_failed";
+      if (code === "forbidden") {
+        setFeedback("Нет прав для изменения пользователей");
+      } else if (code === "unauthorized") {
+        setFeedback("Сессия истекла. Войдите снова");
+      } else {
+        setFeedback("Не удалось сохранить изменения пользователей");
+      }
+      return null;
+    }
+  }
+
+  function toggleUserExpanded(userId, currentOpen) {
+    setExpandedUsers((prev) => ({ ...prev, [userId]: !currentOpen }));
+  }
+
+  function makeUserDraft(user) {
+    return {
+      name: user?.name || "",
+      login: user?.login || "",
+      role: user?.role || ROLE_VIEWER,
+      newPassword: "",
+      repeatPassword: ""
+    };
+  }
+
+  function startUserEditing(user) {
+    setEditingUsers((prev) => ({ ...prev, [user.id]: true }));
+    setUserEditDrafts((prev) => ({ ...prev, [user.id]: makeUserDraft(user) }));
+  }
+
+  function cancelUserEditing(userId) {
+    setEditingUsers((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+    setUserEditDrafts((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+    if (passwordGateUserId === userId) {
+      closePasswordGate();
+    }
+  }
+
+  function patchUserDraft(userId, patch) {
+    setUserEditDrafts((prev) => {
+      const nextCurrent = prev[userId] || makeUserDraft(cmsState.users.find((item) => item.id === userId));
+      return {
+        ...prev,
+        [userId]: { ...nextCurrent, ...patch }
+      };
+    });
+  }
+
+  function openPasswordGate(user) {
+    if (!editingUsers[user.id]) {
+      setFeedback("Сначала нажмите «Редактировать»");
+      return;
+    }
+
+    const draftUser = userEditDrafts[user.id];
+    if (!draftUser) {
+      setFeedback("Не найден черновик редактирования пользователя");
+      return;
+    }
+
+    const nextName = String(draftUser.name || "").trim();
+    const nextLogin = String(draftUser.login || "").trim();
+    const nextPassword = String(draftUser.newPassword || "").trim();
+    const repeatPassword = String(draftUser.repeatPassword || "").trim();
+
+    if (!nextName || !nextLogin) {
+      setFeedback("Заполните ФИО и логин");
+      return;
+    }
+
+    if (nextPassword || repeatPassword) {
+      if (nextPassword !== repeatPassword) {
+        setFeedback("Пароль и подтверждение не совпадают");
+        return;
+      }
+      if (nextPassword.length < 8) {
+        setFeedback("Пароль должен содержать минимум 8 символов");
+        return;
+      }
+    }
+
+    const isDemotingAdmin = user.role === ROLE_ADMIN && draftUser.role !== ROLE_ADMIN;
+    if (isDemotingAdmin) {
+      const adminsLeft = cmsState.users.filter((item) => item.role === ROLE_ADMIN && item.id !== user.id).length;
+      if (adminsLeft < 1) {
+        setFeedback("В системе должен оставаться минимум один администратор");
+        return;
+      }
+    }
+
+    setPasswordGateForm((prev) => ({
+      login: prev.login || session?.login || "",
+      password: "",
+      codeword: ""
+    }));
+    setPasswordGateUserId(user.id);
+  }
+
+  function closePasswordGate() {
+    if (passwordGateBusy) {
+      return;
+    }
+    setPasswordGateUserId("");
+    setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
+  }
+
+  async function confirmPasswordGate() {
+    if (!passwordGateTargetUser || !session) {
+      closePasswordGate();
+      return;
+    }
+
+    const draftUser = userEditDrafts[passwordGateTargetUser.id];
+    if (!draftUser || !editingUsers[passwordGateTargetUser.id]) {
+      setFeedback("Сначала включите режим редактирования пользователя");
+      return;
+    }
+
+    const nextName = String(draftUser.name || "").trim();
+    const nextLogin = String(draftUser.login || "").trim().toLowerCase();
+    const nextRole = draftUser.role || ROLE_VIEWER;
+    const nextPassword = String(draftUser.newPassword || "").trim();
+    const repeatPassword = String(draftUser.repeatPassword || "").trim();
+
+    if (!nextName || !nextLogin) {
+      setFeedback("Заполните ФИО и логин");
+      return;
+    }
+    if (nextPassword || repeatPassword) {
+      if (nextPassword !== repeatPassword) {
+        setFeedback("Пароль и подтверждение не совпадают");
+        return;
+      }
+      if (nextPassword.length < 8) {
+        setFeedback("Пароль должен содержать минимум 8 символов");
+        return;
+      }
+    }
+    if (!passwordGateForm.login || !passwordGateForm.password || !passwordGateForm.codeword) {
+      setFeedback("Заполните все поля подтверждения безопасности");
+      return;
+    }
+
+    setPasswordGateBusy(true);
+    try {
+      await verifySensitiveGate({
+        authLogin: passwordGateForm.login.trim(),
+        authPassword: passwordGateForm.password,
+        codeword: passwordGateForm.codeword.trim(),
+        sessionUserId: session.id
+      });
+
+      let nextState = await updateUsers((nextUsers) => {
+        const idx = nextUsers.findIndex((item) => item.id === passwordGateTargetUser.id);
+        if (idx >= 0) {
+          nextUsers[idx].name = nextName;
+          nextUsers[idx].login = nextLogin;
+          nextUsers[idx].role = nextRole;
+        }
+        return nextUsers;
+      }, `Изменения пользователя «${nextName || nextLogin}» сохранены`);
+      if (!nextState) {
+        return;
+      }
+
+      if (nextPassword) {
+        nextState = await setUserPassword(passwordGateTargetUser.id, nextPassword, {
+          authLogin: passwordGateForm.login.trim(),
+          authPassword: passwordGateForm.password,
+          codeword: passwordGateForm.codeword.trim(),
+          sessionUserId: session.id
+        });
+        syncState(nextState, `Изменения пользователя «${nextName || nextLogin}» сохранены`);
+      }
+
+      cancelUserEditing(passwordGateTargetUser.id);
+      setPasswordGateUserId("");
+      setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "user_update_failed";
+      if (code === "invalid_codeword") {
+        setFeedback("Неверное кодовое слово");
+      } else if (code === "invalid_auth") {
+        setFeedback("Повторная авторизация не пройдена");
+      } else if (code === "forbidden") {
+        setFeedback("Подтверждение должно быть выполнено под текущей админ-учёткой администратора");
+      } else if (code === "locked") {
+        setFeedback("Слишком много неудачных попыток подтверждения. Подождите и повторите.");
+      } else if (code === "unauthorized") {
+        setFeedback("Сессия истекла. Войдите снова");
+      } else {
+        setFeedback("Не удалось сохранить изменения пользователя");
+      }
+    } finally {
+      setPasswordGateBusy(false);
+    }
   }
 
   function rememberImagePreview(key, file) {
@@ -1325,13 +1987,15 @@ export default function AdminApp() {
     return typeof uploadedPath === "string" ? uploadedPath : null;
   }
 
-  async function handleDeleteFile(filePath) {
+  async function handleDeleteFile(filePath, options = {}) {
     const normalizedPath = String(filePath || "").trim();
     if (!isProjectAssetPath(normalizedPath)) {
       return false;
     }
 
-    const draftRefs = countAssetPathOccurrences(draft, normalizedPath);
+    const ignoredDraftRefs = Math.max(0, Number(options.ignoreDraftPathOccurrences) || 0);
+    const draftRefsRaw = countAssetPathOccurrences(draft, normalizedPath);
+    const draftRefs = Math.max(0, draftRefsRaw - ignoredDraftRefs);
     const publishedRefs = countAssetPathOccurrences(cmsState.published, normalizedPath);
 
     if (draftRefs > 1) {
@@ -1360,6 +2024,10 @@ export default function AdminApp() {
     if (!result.session) {
       if (result.error === "locked" && result.retryAt) {
         setFeedback(`Слишком много попыток. Повторите после ${formatDate(result.retryAt)}.`);
+        return;
+      }
+      if (result.error === "unavailable") {
+        setFeedback("Сервер CMS недоступен. Проверьте API и повторите вход.");
         return;
       }
       setFeedback("Неверный логин или пароль");
@@ -1445,7 +2113,8 @@ export default function AdminApp() {
   }
 
   return (
-    <main className="ap-shell">
+    <>
+      <main className="ap-shell">
       <header className="ap-header">
         <div className="ap-brand" aria-label="Институт креативных индустрий и социального проектирования АртКомм">
           <img className="logo-mark" src="/assets/logo-mark.png" alt="" aria-hidden="true" />
@@ -1539,6 +2208,7 @@ export default function AdminApp() {
                 onUploadFile={handleUploadFile}
                 onDeleteFile={handleDeleteFile}
                 uploadFolder="slides"
+                thumbPreset="hero"
               />
 
               <ImageListEditor
@@ -1561,6 +2231,30 @@ export default function AdminApp() {
                 onUploadFile={handleUploadFile}
                 onDeleteFile={handleDeleteFile}
                 uploadFolder="logos"
+                thumbPreset="logo"
+              />
+
+              <ImageListEditor
+                title="Фотографии Романа Скуднякова"
+                subtitle="Галерея секции «Эксперт» с теми же правилами сортировки и замены"
+                items={draft.home.expert.photos || []}
+                readonly={editLocked}
+                onChange={(nextItems) =>
+                  updateDraft((next) => {
+                    next.home.expert.photos = nextItems;
+                    return next;
+                  })
+                }
+                imageKey="image"
+                altKey="alt"
+                titleKey={null}
+                localPreviewMap={localImagePreviews}
+                onPickPreview={rememberImagePreview}
+                idPrefix="expert-photo-media"
+                onUploadFile={handleUploadFile}
+                onDeleteFile={handleDeleteFile}
+                uploadFolder="expert"
+                thumbPreset="expert"
               />
 
               <VideoEditor
@@ -2244,6 +2938,7 @@ export default function AdminApp() {
                 onUploadFile={handleUploadFile}
                 onDeleteFile={handleDeleteFile}
                 uploadFolder="expert"
+                thumbPreset="expert"
               />
 
               <TextItemListEditor
@@ -2783,7 +3478,7 @@ export default function AdminApp() {
           {tab === "modals" ? (
             <Panel
               title={`Модальные окна (${Array.isArray(draft.modals) ? draft.modals.length : 0})`}
-              subtitle="Все модальные окна отображаются ниже. Здесь редактируются их заголовки и HTML."
+              subtitle="Все модальные окна отображаются ниже. Здесь редактируются заголовки и содержимое в удобных полях."
             >
               <div className="ap-list">
                 {(Array.isArray(draft.modals) ? draft.modals : []).map((entry, index) => (
@@ -2808,23 +3503,21 @@ export default function AdminApp() {
                             })
                           }
                         />
-                        <TextField
-                          label="HTML-контент"
-                          rows={10}
-                          value={entry.bodyHtml || ""}
-                          disabled={readonly}
-                          onChange={(event) =>
+                        <ModalBodyEditor
+                          entry={entry}
+                          readonly={readonly}
+                          onChange={(nextBodyHtml) =>
                             updateDraft((next) => {
                               const idx = next.modals.findIndex((modalEntry) => modalEntry.id === entry.id);
                               if (idx >= 0) {
-                                next.modals[idx].bodyHtml = event.target.value;
+                                next.modals[idx].bodyHtml = nextBodyHtml;
                               }
                               return next;
                             })
                           }
                         />
                         <Toggle
-                          label="Показывать модалку"
+                          label="Показывать модальное окно"
                           checked={entry.isPublished !== false}
                           disabled={readonly}
                           onChange={(event) =>
@@ -2847,191 +3540,147 @@ export default function AdminApp() {
 
           {tab === "users" && canManageUsersNow ? (
             <Panel title="Пользователи" subtitle="Роли и безопасная смена паролей">
-              <div className="ap-grid ap-grid-3">
-                <Field
-                  label="Логин для подтверждения"
-                  value={passwordGateForm.login}
-                  onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, login: event.target.value }))}
-                />
-                <Field
-                  label="Пароль для подтверждения"
-                  type="password"
-                  value={passwordGateForm.password}
-                  onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, password: event.target.value }))}
-                />
-                <Field
-                  label="Кодовое слово"
-                  type="password"
-                  value={passwordGateForm.codeword}
-                  onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, codeword: event.target.value }))}
-                />
-              </div>
+              <p className="ap-feedback ap-feedback-muted">Для смены пароля и другой личной информации нажмите «Сохранить изменения» в карточке пользователя и подтвердите действие в модальном окне.</p>
 
               <div className="ap-list">
-                {cmsState.users.map((user, index) => (
-                  <article key={user.id} className="ap-item">
-                    <div className="ap-item-body ap-item-doc">
-                      <div className="ap-item-fields">
-                        <div className="ap-grid ap-grid-4">
-                          <Field
-                            label="ФИО"
-                            value={user.name}
-                            onChange={(event) =>
-                              updateUsers((nextUsers) => {
-                                nextUsers[index].name = event.target.value;
-                                return nextUsers;
-                              })
-                            }
-                          />
-                          <Field
-                            label="Логин"
-                            value={user.login}
-                            onChange={(event) =>
-                              updateUsers((nextUsers) => {
-                                nextUsers[index].login = event.target.value;
-                                return nextUsers;
-                              })
-                            }
-                          />
-                          <Field
-                            label="Новый пароль"
-                            type="password"
-                            value={userPasswordDrafts[user.id] || ""}
-                            onChange={(event) =>
-                              setUserPasswordDrafts((prev) => ({
-                                ...prev,
-                                [user.id]: event.target.value
-                              }))
-                            }
-                          />
-                          <Field
-                            label="Повторите пароль"
-                            type="password"
-                            value={userPasswordConfirmDrafts[user.id] || ""}
-                            onChange={(event) =>
-                              setUserPasswordConfirmDrafts((prev) => ({
-                                ...prev,
-                                [user.id]: event.target.value
-                              }))
-                            }
-                          />
-                        </div>
+                {cmsState.users.map((user, index) => {
+                  const isOpen = expandedUsers[user.id] ?? index === 0;
+                  const isEditing = Boolean(editingUsers[user.id]);
+                  const userDraft = userEditDrafts[user.id] || makeUserDraft(user);
+                  return (
+                    <article key={user.id} className="ap-item ap-user-item">
+                        <button
+                          type="button"
+                          className={`ap-accordion-btn${isOpen ? " is-open" : ""}`}
+                          onClick={() => toggleUserExpanded(user.id, isOpen)}
+                        >
+                          <span className="ap-accordion-title">{user.name || `Пользователь ${index + 1}`}</span>
+                          <span className="ap-accordion-meta">{user.login} · {ROLE_LABELS[user.role]}</span>
+                          <span className="ap-accordion-icon" aria-hidden="true">{isOpen ? "−" : "+"}</span>
+                        </button>
 
-                        <div className="ap-item-actions">
-                          <label className="ap-field ap-role-field">
-                            <span>Роль</span>
-                            <select
-                              value={user.role}
-                              onChange={(event) => {
-                                const nextRole = event.target.value;
-                                const isDemotingAdmin = user.role === ROLE_ADMIN && nextRole !== ROLE_ADMIN;
-                                if (isDemotingAdmin) {
-                                  const adminsLeft = cmsState.users.filter((item) => item.role === ROLE_ADMIN && item.id !== user.id).length;
-                                  if (adminsLeft < 1) {
-                                    setFeedback("В системе должен оставаться минимум один администратор");
-                                    return;
-                                  }
-                                }
-                                updateUsers((nextUsers) => {
-                                  nextUsers[index].role = nextRole;
-                                  return nextUsers;
-                                });
-                              }}
-                            >
-                              <option value={ROLE_ADMIN}>Администратор</option>
-                              <option value={ROLE_EDITOR}>Редактор</option>
-                              <option value={ROLE_VIEWER}>Просмотр</option>
-                            </select>
-                          </label>
+                        {isOpen ? (
+                          <div className="ap-item-body ap-item-doc">
+                            <div className="ap-item-fields">
+                              <div className="ap-grid ap-grid-4">
+                                <Field
+                                  label="ФИО"
+                                  value={isEditing ? userDraft.name : user.name}
+                                  disabled={!isEditing}
+                                  onChange={(event) => patchUserDraft(user.id, { name: event.target.value })}
+                                />
+                                <Field
+                                  label="Логин"
+                                  value={isEditing ? userDraft.login : user.login}
+                                  disabled={!isEditing}
+                                  onChange={(event) => patchUserDraft(user.id, { login: event.target.value })}
+                                />
+                                <Field
+                                  label="Новый пароль"
+                                  type="password"
+                                  value={isEditing ? userDraft.newPassword : ""}
+                                  disabled={!isEditing}
+                                  onChange={(event) => patchUserDraft(user.id, { newPassword: event.target.value })}
+                                />
+                                <Field
+                                  label="Повторите пароль"
+                                  type="password"
+                                  value={isEditing ? userDraft.repeatPassword : ""}
+                                  disabled={!isEditing}
+                                  onChange={(event) => patchUserDraft(user.id, { repeatPassword: event.target.value })}
+                                />
+                              </div>
 
-                          <button
-                            type="button"
-                            className="ap-btn ap-btn-ghost"
-                            onClick={async () => {
-                              const nextPassword = (userPasswordDrafts[user.id] || "").trim();
-                              const repeatPassword = (userPasswordConfirmDrafts[user.id] || "").trim();
+                              <div className="ap-user-footer">
+                                <label className="ap-field ap-role-field">
+                                  <span>Роль</span>
+                                  <select
+                                    value={isEditing ? userDraft.role : user.role}
+                                    disabled={!isEditing}
+                                    onChange={(event) => {
+                                      const nextRole = event.target.value;
+                                      patchUserDraft(user.id, { role: nextRole });
+                                    }}
+                                  >
+                                    <option value={ROLE_ADMIN}>Администратор</option>
+                                    <option value={ROLE_EDITOR}>Редактор</option>
+                                    <option value={ROLE_VIEWER}>Наблюдатель</option>
+                                  </select>
+                                </label>
 
-                              if (!nextPassword || !repeatPassword) {
-                                setFeedback("Введите новый пароль и подтверждение");
-                                return;
-                              }
-                              if (nextPassword !== repeatPassword) {
-                                setFeedback("Пароль и подтверждение не совпадают");
-                                return;
-                              }
-                              if (nextPassword.length < 8) {
-                                setFeedback("Пароль должен содержать минимум 8 символов");
-                                return;
-                              }
-                              if (!passwordGateForm.login || !passwordGateForm.password || !passwordGateForm.codeword) {
-                                setFeedback("Для смены пароля заполните блок подтверждения безопасности");
-                                return;
-                              }
+                                <div className="ap-item-actions ap-user-actions">
+                                  {isEditing ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="ap-btn ap-btn-ghost"
+                                        onClick={() => cancelUserEditing(user.id)}
+                                      >
+                                        Отменить
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="ap-btn ap-btn-primary"
+                                        onClick={() => openPasswordGate(user)}
+                                      >
+                                        Сохранить изменения
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="ap-btn ap-btn-ghost"
+                                      onClick={() => startUserEditing(user)}
+                                    >
+                                      Редактировать
+                                    </button>
+                                  )}
 
-                              const codewordHash = await hashPassword(passwordGateForm.codeword.trim());
-                              if (codewordHash !== SECURITY_CODEWORD_HASH) {
-                                setFeedback("Неверное кодовое слово");
-                                return;
-                              }
-
-                              const gate = await verifySensitiveAuth(passwordGateForm.login.trim(), passwordGateForm.password);
-                              if (!gate.user) {
-                                setFeedback("Повторная авторизация не пройдена");
-                                return;
-                              }
-
-                              if (!session || gate.user.id !== session.id) {
-                                setFeedback("Подтверждение должно быть выполнено под текущей админ-учёткой");
-                                return;
-                              }
-
-                              try {
-                                const nextState = await setUserPassword(user.id, nextPassword, {
-                                  authLogin: passwordGateForm.login.trim(),
-                                  authPassword: passwordGateForm.password,
-                                  codeword: passwordGateForm.codeword.trim(),
-                                  sessionUserId: session.id
-                                });
-                                setUserPasswordDrafts((prev) => ({ ...prev, [user.id]: "" }));
-                                setUserPasswordConfirmDrafts((prev) => ({ ...prev, [user.id]: "" }));
-                                setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
-                                syncState(nextState, "Пароль обновлён");
-                              } catch {
-                                setFeedback("Не удалось обновить пароль");
-                              }
-                            }}
-                          >
-                            Сохранить пароль
-                          </button>
-
-                          <button
-                            type="button"
-                            className="ap-btn ap-btn-danger"
-                            onClick={async () => {
-                              if (session && user.id === session.id) {
-                                setFeedback("Нельзя удалить текущую активную учётную запись");
-                                return;
-                              }
-                              const nextUsers = cmsState.users.filter((_, idx) => idx !== index);
-                              if (nextUsers.length < 3) {
-                                setFeedback("По ТЗ должно быть минимум 3 учётные записи");
-                                return;
-                              }
-                              const adminCount = nextUsers.filter((item) => item.role === ROLE_ADMIN).length;
-                              if (adminCount < 1) {
-                                setFeedback("Нельзя удалить последнюю учётную запись администратора");
-                                return;
-                              }
-                              await updateUsers(() => nextUsers, "Пользователь удалён");
-                            }}
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                ))}
+                                  <button
+                                    type="button"
+                                    className="ap-btn ap-btn-danger"
+                                    onClick={async () => {
+                                      if (session && user.id === session.id) {
+                                        setFeedback("Нельзя удалить текущую активную учётную запись");
+                                        return;
+                                      }
+                                      const nextUsers = cmsState.users.filter((_, idx) => idx !== index);
+                                      const adminCount = nextUsers.filter((item) => item.role === ROLE_ADMIN).length;
+                                      if (adminCount < 1) {
+                                        setFeedback("Нельзя удалить последнюю учётную запись администратора");
+                                        return;
+                                      }
+                                      await updateUsers(() => nextUsers, "Пользователь удалён");
+                                      setUserEditDrafts((prev) => {
+                                        const next = { ...prev };
+                                        delete next[user.id];
+                                        return next;
+                                      });
+                                      setEditingUsers((prev) => {
+                                        const next = { ...prev };
+                                        delete next[user.id];
+                                        return next;
+                                      });
+                                      setExpandedUsers((prev) => {
+                                        const next = { ...prev };
+                                        delete next[user.id];
+                                        return next;
+                                      });
+                                      if (passwordGateUserId === user.id) {
+                                        closePasswordGate();
+                                      }
+                                    }}
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                    </article>
+                  );
+                })}
               </div>
 
               <button
@@ -3044,12 +3693,11 @@ export default function AdminApp() {
                       id: makeId("user"),
                       name: "Новый пользователь",
                       login: `user${cmsState.users.length + 1}`,
-                      passwordHash: "e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f",
                       role: ROLE_VIEWER,
                       createdAt: new Date().toISOString()
                     }
                   ];
-                  await updateUsers(() => nextUsers, "Пользователь добавлен (пароль: change-me)");
+                  await updateUsers(() => nextUsers, "Пользователь добавлен. Задайте пароль через «Редактировать»");
                 }}
               >
                 <span>+</span>
@@ -3060,6 +3708,62 @@ export default function AdminApp() {
 
         </section>
       </div>
-    </main>
+      </main>
+
+      {isPasswordGateOpen ? (
+        <div className="ap-modal-layer" role="dialog" aria-modal="true" aria-labelledby="password-gate-title">
+          <div className="ap-modal-overlay" onClick={closePasswordGate} />
+          <section className="ap-modal-card">
+            <header className="ap-modal-head">
+              <h3 id="password-gate-title">Подтвердите сохранение изменений</h3>
+              <p>Введите текущий логин администратора, пароль и кодовое слово.</p>
+            </header>
+
+            <div className="ap-modal-body">
+              <p className="ap-modal-user">
+                Пользователь: <strong>{passwordGateTargetUser?.name || passwordGateTargetUser?.login || "—"}</strong>
+              </p>
+              <div className="ap-grid ap-modal-grid">
+                <Field
+                  label="Логин для подтверждения"
+                  value={passwordGateForm.login}
+                  autoComplete="username"
+                  onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, login: event.target.value }))}
+                />
+                <Field
+                  label="Пароль для подтверждения"
+                  type="password"
+                  autoComplete="current-password"
+                  value={passwordGateForm.password}
+                  onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, password: event.target.value }))}
+                />
+                <Field
+                  label="Кодовое слово"
+                  type="password"
+                  value={passwordGateForm.codeword}
+                  onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, codeword: event.target.value }))}
+                />
+              </div>
+            </div>
+
+            <footer className="ap-modal-actions">
+              <button type="button" className="ap-btn ap-btn-ghost" disabled={passwordGateBusy} onClick={closePasswordGate}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="ap-btn ap-btn-primary"
+                disabled={passwordGateBusy}
+                onClick={() => {
+                  void confirmPasswordGate();
+                }}
+              >
+                {passwordGateBusy ? "Проверяем..." : "Сохранить изменения"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }

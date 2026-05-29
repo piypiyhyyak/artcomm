@@ -1,7 +1,7 @@
 const aboutMarkup = String.raw`
   <a class="skip-link" href="#aboutMainContent">Перейти к содержанию</a>
 
-  <header class="site-header about-header is-solid" id="aboutHeader">
+  <header class="site-header about-header" id="aboutHeader">
     <div class="container header-inner about-header-inner">
       <a href="/" class="logo" aria-label="На главную страницу">
         <img class="logo-mark" src="/assets/logo-mark.png" alt="" aria-hidden="true">
@@ -11,11 +11,33 @@ const aboutMarkup = String.raw`
         </div>
       </a>
       <div class="header-actions about-header-actions">
-        <a class="btn btn-secondary" href="/">На главную</a>
-        <a class="btn btn-primary" href="/#contacts">Связаться</a>
+        <a class="btn btn-primary" href="/">На главную</a>
+        <button type="button" class="icon-btn menu-toggle" id="menuToggle" aria-label="Открыть меню" aria-expanded="false" aria-controls="menuDrawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <line x1="4" y1="7" x2="20" y2="7"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="17" x2="20" y2="17"></line>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
+
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <aside class="menu-drawer about-menu-drawer" id="menuDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <strong>Разделы</strong>
+      <button type="button" class="icon-btn" id="menuClose" aria-label="Закрыть меню">×</button>
+    </div>
+    <nav class="drawer-nav">
+      <button type="button" data-scroll="#about-basic">Основные сведения</button>
+      <button type="button" data-scroll="#about-docs">Документы</button>
+      <button type="button" data-scroll="#about-education">Образование</button>
+      <button type="button" data-scroll="#about-management">Руководство</button>
+      <button type="button" data-scroll="#about-extra">Дополнительные разделы</button>
+      <a href="/">На главную</a>
+    </nav>
+  </aside>
 
   <main class="about-page about-page-v2" id="aboutMainContent">
     <section class="about-hero section-deep">
@@ -24,20 +46,12 @@ const aboutMarkup = String.raw`
           <h1>Сведения об организации</h1>
           <p class="about-hero-text">Раздел подготовлен в соответствии с требованиями законодательства и техническим заданием на сайт АНО Институт «АртКомм».</p>
           <div class="about-hero-actions">
-            <a class="btn btn-primary" href="#about-basic">Основные сведения</a>
-            <a class="btn btn-secondary" href="#about-docs">Документы</a>
+            <button type="button" class="btn btn-primary" data-scroll="#about-basic">Основные сведения</button>
+            <button type="button" class="btn btn-secondary" data-scroll="#about-docs">Документы</button>
           </div>
         </div>
       </div>
     </section>
-
-    <nav class="about-anchor-nav container" aria-label="Навигация по странице сведений">
-      <a href="#about-basic">Основные сведения</a>
-      <a href="#about-docs">Документы</a>
-      <a href="#about-education">Образование</a>
-      <a href="#about-management">Руководство</a>
-      <a href="#about-extra">Дополнительные разделы</a>
-    </nav>
 
     <section class="about-section section-light" id="about-basic">
       <div class="container about-section-shell">
@@ -68,7 +82,6 @@ const aboutMarkup = String.raw`
               <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Информация о лицензии на образовательную деятельность</a>
               <a href="https://islod.obrnadzor.gov.ru/" target="_blank" rel="noopener noreferrer">Проверить лицензию в реестре Рособрнадзора</a>
             </div>
-            <p class="about-note">До публикации оригиналов часть пунктов временно ведёт на устав организации.</p>
           </article>
         </div>
       </div>
@@ -221,13 +234,12 @@ const aboutMarkup = String.raw`
             <h3>Образовательные стандарты</h3>
             <div class="about-links-list">
               <a href="https://www.kremlin.ru/acts/bank/39206" target="_blank" rel="noopener noreferrer">Федеральный закон №273-ФЗ «Об образовании в РФ»</a>
-              <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Нормативные правовые акты (список уточняется)</a>
+              <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">Нормативные правовые акты</a>
             </div>
           </article>
 
           <article class="about-card">
             <h3>Лицензия</h3>
-            <div class="about-license-placeholder">Скан лицензии будет размещён после передачи документа.</div>
             <div class="about-links-list">
               <a href="https://islod.obrnadzor.gov.ru/" target="_blank" rel="noopener noreferrer">Оригинал в федеральном реестре</a>
             </div>

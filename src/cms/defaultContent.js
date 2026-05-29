@@ -7,7 +7,7 @@ export const ROLE_VIEWER = "viewer";
 export const ROLE_LABELS = {
   [ROLE_ADMIN]: "Администратор",
   [ROLE_EDITOR]: "Редактор",
-  [ROLE_VIEWER]: "Просмотр"
+  [ROLE_VIEWER]: "Наблюдатель"
 };
 
 export const DEFAULT_USERS = [
@@ -15,7 +15,6 @@ export const DEFAULT_USERS = [
     id: "admin-1",
     name: "Системный администратор",
     login: "admin",
-    passwordHash: "f6ee94ecb014f74f887b9dcc52daecf73ab3e3333320cadd98bcb59d895c52f5",
     role: ROLE_ADMIN,
     createdAt: "2026-05-26T09:00:00.000Z"
   },
@@ -23,7 +22,6 @@ export const DEFAULT_USERS = [
     id: "editor-1",
     name: "Контент-редактор",
     login: "editor",
-    passwordHash: "8c0a5c55c69c7a78c3d1dc2413fe5421e29e0babc865f2715d257aac667d0fc1",
     role: ROLE_EDITOR,
     createdAt: "2026-05-26T09:00:00.000Z"
   },
@@ -31,7 +29,6 @@ export const DEFAULT_USERS = [
     id: "viewer-1",
     name: "Наблюдатель",
     login: "viewer",
-    passwordHash: "34a81f5287a0e087ed4193c27243b3884b289fbc7a8d5cd3b97abf350210f5a2",
     role: ROLE_VIEWER,
     createdAt: "2026-05-26T09:00:00.000Z"
   }
@@ -367,10 +364,10 @@ export const DEFAULT_CONTENT = {
       ],
       standards: [
         { id: "std-1", title: "Федеральный закон №273-ФЗ «Об образовании в РФ»", url: "https://www.kremlin.ru/acts/bank/39206", isPublished: true },
-        { id: "std-2", title: "Нормативные правовые акты (список уточняется)", url: "/assets/ustav-artkommunikacii.pdf", isPublished: true }
+        { id: "std-2", title: "Нормативные правовые акты", url: "/assets/ustav-artkommunikacii.pdf", isPublished: true }
       ],
       license: {
-        placeholder: "Скан лицензии будет размещён после передачи документа.",
+        placeholder: "",
         registryLabel: "Оригинал в федеральном реестре",
         registryUrl: "https://islod.obrnadzor.gov.ru/"
       },

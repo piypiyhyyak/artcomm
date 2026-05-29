@@ -87,6 +87,31 @@ npm run build
 
 ---
 
+## Безопасность CMS (прод)
+
+Логин/пароль администратора и кодовое слово CMS должны храниться **в окружении сервера**, не в репозитории.
+
+1. Скопируйте шаблон:
+
+```bash
+sudo install -m 600 -o root -g root deploy/systemd/artcomm-cms.env.example /etc/artcomm-cms.env
+```
+
+2. Отредактируйте `/etc/artcomm-cms.env` и задайте реальные секреты:
+
+- `ARTCOMM_CMS_ADMIN_LOGIN`
+- `ARTCOMM_CMS_ADMIN_PASSWORD`
+- `ARTCOMM_CMS_SECURITY_CODEWORD`
+
+3. Перезапустите сервис CMS:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart artcomm-cms
+```
+
+---
+
 ## Частые проблемы (и как быстро починить)
 
 ### 1) “Я заменил файл, но на сайте старое изображение”

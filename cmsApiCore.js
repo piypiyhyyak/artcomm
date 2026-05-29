@@ -17,13 +17,21 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const LOGIN_ATTEMPT_LIMIT = 6;
 const LOGIN_COOLDOWN_MS = 1000 * 60 * 5;
 const MAX_BODY_BYTES = 380 * 1024 * 1024;
+const MAX_AUTH_PAYLOAD_BYTES = 8 * 1024;
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_SALT_BYTES = 16;
+const SCRYPT_MAXMEM = 128 * 1024 * 1024;
 
 const ADMIN_ID = "admin-1";
-const REQUIRED_ADMIN_LOGIN = "admin";
-const REQUIRED_ADMIN_PASSWORD_HASH = "f6ee94ecb014f74f887b9dcc52daecf73ab3e3333320cadd98bcb59d895c52f5";
+const DEFAULT_ADMIN_LOGIN = "admin";
+const DEFAULT_ADMIN_PASSWORD_HASH_LEGACY = "f6ee94ecb014f74f887b9dcc52daecf73ab3e3333320cadd98bcb59d895c52f5";
 const LEGACY_ADMIN_PASSWORD_HASH = "893cbcc2f9197dce1feea7c1e80486f27ae0be699408157d744928b600a7e82b";
-const SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
+const DEFAULT_SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
 const CHARTER_FALLBACK_URL = "/assets/ustav-artkommunikacii.pdf";
+const RUNTIME_STATE_KEY = "__ARTCOMM_CMS_RUNTIME__";
 
 const PENDING_SUFFIX_RE = /\s*\(файл добавляется\)\s*$/i;
 const PENDING_WITH_OPTIONAL_RE = /\s*\(при наличии,\s*файл добавляется\)\s*$/i;
@@ -80,6 +88,156 @@ const MAX_FILE_BYTES_BY_EXTENSION = {
   ".webm": 260 * 1024 * 1024,
   ".ogg": 260 * 1024 * 1024
 };
+
+function normalizeLogin(login) {
+  return String(login || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(String(value || ""), "utf8").digest("hex");
+}
+
+function hashPasswordScrypt(password, salt = crypto.randomBytes(SCRYPT_SALT_BYTES)) {
+  const plain = String(password || "");
+  const derived = crypto.scryptSync(plain, salt, SCRYPT_KEYLEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: SCRYPT_MAXMEM
+  });
+  return [
+    "scrypt",
+    String(SCRYPT_N),
+    String(SCRYPT_R),
+    String(SCRYPT_P),
+    salt.toString("base64"),
+    derived.toString("base64")
+  ].join("$");
+}
+
+function verifyScryptHash(password, encoded) {
+  if (typeof encoded !== "string" || !encoded.startsWith("scrypt$")) {
+    return false;
+  }
+  const parts = encoded.split("$");
+  if (parts.length !== 6) {
+    return false;
+  }
+
+  const [, nRaw, rRaw, pRaw, saltRaw, hashRaw] = parts;
+  const n = Number(nRaw);
+  const r = Number(rRaw);
+  const p = Number(pRaw);
+  if (!Number.isFinite(n) || !Number.isFinite(r) || !Number.isFinite(p) || n <= 1 || r <= 0 || p <= 0) {
+    return false;
+  }
+
+  let salt;
+  let expected;
+  try {
+    salt = Buffer.from(saltRaw, "base64");
+    expected = Buffer.from(hashRaw, "base64");
+  } catch {
+    return false;
+  }
+  if (!salt.length || !expected.length) {
+    return false;
+  }
+
+  let actual;
+  try {
+    actual = crypto.scryptSync(String(password || ""), salt, expected.length, {
+      N: n,
+      r,
+      p,
+      maxmem: SCRYPT_MAXMEM
+    });
+  } catch {
+    return false;
+  }
+
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function verifyPasswordHash(password, storedHash) {
+  const hash = String(storedHash || "").trim();
+  if (!hash) {
+    return false;
+  }
+  if (hash.startsWith("scrypt$")) {
+    return verifyScryptHash(password, hash);
+  }
+  if (/^[a-f0-9]{64}$/i.test(hash)) {
+    const actualHex = sha256(password);
+    const expected = Buffer.from(hash.toLowerCase(), "hex");
+    const actual = Buffer.from(actualHex, "hex");
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  }
+  return false;
+}
+
+function isSupportedPasswordHashFormat(hashValue) {
+  const hash = String(hashValue || "").trim();
+  return hash.startsWith("scrypt$") || /^[a-f0-9]{64}$/i.test(hash);
+}
+
+function hashPasswordForStorage(password) {
+  return hashPasswordScrypt(password);
+}
+
+function sanitizeUserForClient(user) {
+  if (!user || typeof user !== "object") {
+    return null;
+  }
+  return {
+    id: user.id,
+    name: user.name,
+    login: user.login,
+    role: user.role,
+    createdAt: user.createdAt || null
+  };
+}
+
+function sanitizeStateForClient(state) {
+  if (!state || typeof state !== "object") {
+    return state;
+  }
+  const users = Array.isArray(state.users) ? state.users.map(sanitizeUserForClient).filter(Boolean) : [];
+  return {
+    ...state,
+    users
+  };
+}
+
+function resolveSecurityConfig() {
+  const adminLogin = normalizeLogin(process.env.ARTCOMM_CMS_ADMIN_LOGIN || DEFAULT_ADMIN_LOGIN) || DEFAULT_ADMIN_LOGIN;
+  const adminPassword = String(process.env.ARTCOMM_CMS_ADMIN_PASSWORD || "");
+  const adminPasswordHashRaw = String(process.env.ARTCOMM_CMS_ADMIN_PASSWORD_HASH || "").trim();
+  const securityCodeword = String(process.env.ARTCOMM_CMS_SECURITY_CODEWORD || "");
+  const securityCodewordHashRaw = String(process.env.ARTCOMM_CMS_SECURITY_CODEWORD_HASH || "").trim();
+
+  let adminPasswordHash = DEFAULT_ADMIN_PASSWORD_HASH_LEGACY;
+  if (adminPassword) {
+    adminPasswordHash = hashPasswordForStorage(adminPassword);
+  } else if (adminPasswordHashRaw && isSupportedPasswordHashFormat(adminPasswordHashRaw)) {
+    adminPasswordHash = adminPasswordHashRaw;
+  }
+
+  const securityCodewordHash = securityCodeword
+    ? sha256(securityCodeword)
+    : /^[a-f0-9]{64}$/i.test(securityCodewordHashRaw)
+      ? securityCodewordHashRaw.toLowerCase()
+      : DEFAULT_SECURITY_CODEWORD_HASH;
+
+  return {
+    adminLogin,
+    adminPasswordHash,
+    securityCodewordHash
+  };
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -283,11 +441,10 @@ function normalizeActionLimits(content) {
   return changed;
 }
 
-function normalizeLoadedUsers(rawUsers) {
-  const users = Array.isArray(rawUsers) ? cloneDeep(rawUsers) : [];
-  if (!users.length) {
-    return cloneDeep(DEFAULT_USERS);
-  }
+function normalizeLoadedUsers(rawUsers, securityConfig) {
+  const users = Array.isArray(rawUsers) && rawUsers.length ? cloneDeep(rawUsers) : cloneDeep(DEFAULT_USERS);
+  const adminLogin = normalizeLogin(securityConfig?.adminLogin || DEFAULT_ADMIN_LOGIN) || DEFAULT_ADMIN_LOGIN;
+  const requiredAdminPasswordHash = String(securityConfig?.adminPasswordHash || DEFAULT_ADMIN_PASSWORD_HASH_LEGACY).trim();
 
   const adminIndex = users.findIndex((user) => user && user.id === ADMIN_ID);
   if (adminIndex >= 0) {
@@ -295,17 +452,19 @@ function normalizeLoadedUsers(rawUsers) {
     const nextAdmin = {
       ...currentAdmin,
       id: ADMIN_ID,
-      login: REQUIRED_ADMIN_LOGIN,
+      login: adminLogin,
       role: ROLE_ADMIN
     };
 
+    const currentHash = String(nextAdmin.passwordHash || "").trim();
     const shouldSetRequiredPassword =
-      !nextAdmin.passwordHash ||
-      nextAdmin.passwordHash === LEGACY_ADMIN_PASSWORD_HASH ||
+      !currentHash ||
+      currentHash === LEGACY_ADMIN_PASSWORD_HASH ||
+      currentHash === DEFAULT_ADMIN_PASSWORD_HASH_LEGACY ||
       nextAdmin.password === "artcomm-admin-2026";
 
     if (shouldSetRequiredPassword) {
-      nextAdmin.passwordHash = REQUIRED_ADMIN_PASSWORD_HASH;
+      nextAdmin.passwordHash = requiredAdminPasswordHash;
       delete nextAdmin.password;
     }
 
@@ -316,26 +475,24 @@ function normalizeLoadedUsers(rawUsers) {
   users.unshift({
     ...cloneDeep(DEFAULT_USERS[0]),
     id: ADMIN_ID,
-    login: REQUIRED_ADMIN_LOGIN,
+    login: adminLogin,
     role: ROLE_ADMIN,
-    passwordHash: REQUIRED_ADMIN_PASSWORD_HASH
+    passwordHash: requiredAdminPasswordHash
   });
   return users;
 }
 
-function normalizeUsersForState(nextUsers) {
+function normalizeUsersForState(nextUsers, securityConfig, existingUsersMap = new Map()) {
   const usedLogins = new Set();
   const roles = new Set([ROLE_ADMIN, ROLE_EDITOR, ROLE_VIEWER]);
   return normalizeLoadedUsers((nextUsers || []).map((user, index) => {
     const isAdmin = user && user.id === ADMIN_ID;
-    const baseLogin = String(isAdmin ? REQUIRED_ADMIN_LOGIN : user?.login || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "");
+    const baseLogin = normalizeLogin(isAdmin ? securityConfig?.adminLogin || DEFAULT_ADMIN_LOGIN : user?.login || "");
     const fallbackLogin = `user${index + 1}`;
     let loginCandidate = baseLogin || fallbackLogin;
+    const existingUser = user?.id ? existingUsersMap.get(user.id) : null;
 
-    if (!isAdmin && loginCandidate === REQUIRED_ADMIN_LOGIN) {
+    if (!isAdmin && loginCandidate === normalizeLogin(securityConfig?.adminLogin || DEFAULT_ADMIN_LOGIN)) {
       loginCandidate = fallbackLogin;
     }
 
@@ -353,20 +510,26 @@ function normalizeUsersForState(nextUsers) {
       login: safeLogin,
       role: roles.has(user?.role) ? user.role : ROLE_VIEWER,
       createdAt: user.createdAt || nowIso(),
-      passwordHash: user.passwordHash || ""
+      passwordHash:
+        String(existingUser?.passwordHash || "").trim() ||
+        String(user?.passwordHash || "").trim()
     };
     if (isAdmin) {
       normalized.role = ROLE_ADMIN;
-      normalized.login = REQUIRED_ADMIN_LOGIN;
+      normalized.login = normalizeLogin(securityConfig?.adminLogin || DEFAULT_ADMIN_LOGIN) || DEFAULT_ADMIN_LOGIN;
+      const currentHash = String(normalized.passwordHash || "").trim();
+      if (!currentHash || currentHash === LEGACY_ADMIN_PASSWORD_HASH || currentHash === DEFAULT_ADMIN_PASSWORD_HASH_LEGACY) {
+        normalized.passwordHash = String(securityConfig?.adminPasswordHash || DEFAULT_ADMIN_PASSWORD_HASH_LEGACY).trim();
+      }
     }
     return normalized;
-  }));
+  }), securityConfig);
 }
 
-function normalizeState(parsed) {
+function normalizeState(parsed, securityConfig) {
   const fallback = createBaseState();
   const sourceUsers = Array.isArray(parsed?.users) && parsed.users.length ? parsed.users : fallback.users;
-  const normalizedUsers = normalizeLoadedUsers(sourceUsers);
+  const normalizedUsers = normalizeLoadedUsers(sourceUsers, securityConfig);
 
   const parsedDraft = parsed?.draft && typeof parsed.draft === "object" ? parsed.draft : null;
   const parsedPublished = parsed?.published && typeof parsed.published === "object" ? parsed.published : null;
@@ -390,10 +553,6 @@ function normalizeState(parsed) {
 
   merged.version = CMS_VERSION;
   return merged;
-}
-
-function sha256(value) {
-  return crypto.createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
 
 function parseCookies(cookieHeader) {
@@ -452,6 +611,9 @@ function sendJson(res, status, payload, headers = {}) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   Object.entries(headers).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       res.setHeader(key, value);
@@ -460,13 +622,14 @@ function sendJson(res, status, payload, headers = {}) {
   res.end(JSON.stringify(payload));
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, options = {}) {
+  const limitBytes = Number.isFinite(options.maxBytes) && options.maxBytes > 0 ? options.maxBytes : MAX_BODY_BYTES;
   let size = 0;
   const chunks = [];
 
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
+    if (size > limitBytes) {
       throw new Error("payload_too_large");
     }
     chunks.push(chunk);
@@ -608,7 +771,7 @@ function makeSessionCookie(sid, req) {
     "Path=/",
     `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
     "HttpOnly",
-    "SameSite=Lax"
+    "SameSite=Strict"
   ];
   if (secure) {
     attrs.push("Secure");
@@ -624,12 +787,23 @@ function makeExpiredSessionCookie(req) {
     "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
     "Max-Age=0",
     "HttpOnly",
-    "SameSite=Lax"
+    "SameSite=Strict"
   ];
   if (secure) {
     attrs.push("Secure");
   }
   return attrs.join("; ");
+}
+
+function getRuntimeState() {
+  const root = globalThis;
+  if (!root[RUNTIME_STATE_KEY]) {
+    root[RUNTIME_STATE_KEY] = {
+      sessions: new Map(),
+      loginGuards: new Map()
+    };
+  }
+  return root[RUNTIME_STATE_KEY];
 }
 
 function extractClientIp(req) {
@@ -643,16 +817,18 @@ export function createCmsApiHandler(options = {}) {
   const stateFile = path.join(dataDir, "state.json");
   const publicDir = path.resolve(process.env.ARTCOMM_CMS_PUBLIC_DIR || path.join(rootDir, "public"));
   const assetsDir = path.resolve(process.env.ARTCOMM_CMS_ASSETS_DIR || path.join(publicDir, "assets"));
+  const securityConfig = resolveSecurityConfig();
 
-  const sessions = new Map();
-  const loginGuards = new Map();
+  const runtimeState = getRuntimeState();
+  const sessions = runtimeState.sessions;
+  const loginGuards = runtimeState.loginGuards;
 
   let writeChain = Promise.resolve();
 
   async function ensureStateFile() {
     await fsp.mkdir(dataDir, { recursive: true });
     if (!fs.existsSync(stateFile)) {
-      const initial = normalizeState(createBaseState());
+      const initial = normalizeState(createBaseState(), securityConfig);
       await fsp.writeFile(stateFile, JSON.stringify(initial, null, 2));
     }
   }
@@ -662,14 +838,14 @@ export function createCmsApiHandler(options = {}) {
     try {
       const raw = await fsp.readFile(stateFile, "utf8");
       const parsed = JSON.parse(raw);
-      return normalizeState(parsed);
+      return normalizeState(parsed, securityConfig);
     } catch {
-      return normalizeState(createBaseState());
+      return normalizeState(createBaseState(), securityConfig);
     }
   }
 
   function queueWrite(state) {
-    const next = normalizeState(state);
+    const next = normalizeState(state, securityConfig);
     writeChain = writeChain
       .then(async () => {
         await ensureStateFile();
@@ -737,15 +913,59 @@ export function createCmsApiHandler(options = {}) {
     loginGuards.delete(key);
   }
 
+  function readSecurityGate(gateRaw) {
+    const gate = gateRaw && typeof gateRaw === "object" ? gateRaw : null;
+    if (!gate) {
+      return null;
+    }
+
+    const authLogin = normalizeLogin(gate.authLogin || "");
+    const authPassword = String(gate.authPassword || "");
+    const codeword = String(gate.codeword || "").trim();
+    const sessionUserId = String(gate.sessionUserId || "").trim();
+
+    if (!authLogin || !authPassword || !codeword || !sessionUserId) {
+      return null;
+    }
+
+    return {
+      authLogin,
+      authPassword,
+      codeword,
+      sessionUserId
+    };
+  }
+
+  async function validateSecurityGate(state, session, gateRaw) {
+    const gate = readSecurityGate(gateRaw);
+    if (!gate) {
+      return { ok: false, status: 400, error: "invalid_gate" };
+    }
+
+    if (sha256(gate.codeword) !== securityConfig.securityCodewordHash) {
+      return { ok: false, status: 403, error: "invalid_codeword" };
+    }
+
+    const verifiedUser = await verifyCredentials(state, gate.authLogin, gate.authPassword);
+    if (!verifiedUser) {
+      return { ok: false, status: 403, error: "invalid_auth" };
+    }
+
+    if (verifiedUser.id !== gate.sessionUserId || verifiedUser.role !== ROLE_ADMIN || session.id !== gate.sessionUserId) {
+      return { ok: false, status: 403, error: "forbidden" };
+    }
+
+    return { ok: true, gate };
+  }
+
   async function verifyCredentials(state, login, password) {
-    const normalizedLogin = String(login || "").trim().toLowerCase();
-    const passwordHash = sha256(password);
+    const normalizedLogin = normalizeLogin(login);
     const user = state.users.find((item) => {
       if (!item || item.login !== normalizedLogin) {
         return false;
       }
       if (item.passwordHash) {
-        return item.passwordHash === passwordHash;
+        return verifyPasswordHash(password, item.passwordHash);
       }
       return item.password === password;
     });
@@ -753,7 +973,8 @@ export function createCmsApiHandler(options = {}) {
       return null;
     }
 
-    if (!user.passwordHash) {
+    if (!user.passwordHash || !String(user.passwordHash).startsWith("scrypt$")) {
+      const passwordHash = hashPasswordForStorage(password);
       state.users = state.users.map((item) =>
         item.id === user.id
           ? {
@@ -826,8 +1047,8 @@ export function createCmsApiHandler(options = {}) {
           return true;
         }
 
-        const body = await readJsonBody(req);
-        const login = String(body.login || "").trim().toLowerCase();
+        const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
+        const login = normalizeLogin(body.login || "");
         const password = String(body.password || "");
 
         if (!login || !password) {
@@ -878,7 +1099,7 @@ export function createCmsApiHandler(options = {}) {
               role: session.role,
               loggedAt: session.loggedAt
             },
-            state
+            state: sanitizeStateForClient(state)
           },
           { "Set-Cookie": makeSessionCookie(sid, req) }
         );
@@ -912,7 +1133,7 @@ export function createCmsApiHandler(options = {}) {
             role: session.role,
             loggedAt: session.loggedAt
           },
-          state
+          state: sanitizeStateForClient(state)
         });
         return true;
       }
@@ -923,7 +1144,17 @@ export function createCmsApiHandler(options = {}) {
           return true;
         }
         const state = await readState();
-        sendJson(res, 200, { ok: true, state, session: { id: session.id, role: session.role, login: session.login, name: session.name } });
+        sendJson(res, 200, {
+          ok: true,
+          state: sanitizeStateForClient(state),
+          session: {
+            id: session.id,
+            role: session.role,
+            login: session.login,
+            name: session.name,
+            loggedAt: session.loggedAt
+          }
+        });
         return true;
       }
 
@@ -952,7 +1183,7 @@ export function createCmsApiHandler(options = {}) {
         state.updatedAt = nowIso();
 
         const saved = await queueWrite(state);
-        sendJson(res, 200, { ok: true, state: saved });
+        sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;
       }
 
@@ -977,7 +1208,7 @@ export function createCmsApiHandler(options = {}) {
         state.lastPublishedBy = session.id;
 
         const saved = await queueWrite(state);
-        sendJson(res, 200, { ok: true, state: saved });
+        sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;
       }
 
@@ -998,11 +1229,36 @@ export function createCmsApiHandler(options = {}) {
         }
 
         const state = await readState();
-        state.users = normalizeUsersForState(body.users);
+        const existingUsersMap = new Map(
+          (Array.isArray(state.users) ? state.users : []).map((user) => [user.id, user])
+        );
+        state.users = normalizeUsersForState(body.users, securityConfig, existingUsersMap);
         state.updatedAt = nowIso();
         const saved = await queueWrite(state);
 
-        sendJson(res, 200, { ok: true, state: saved });
+        sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
+        return true;
+      }
+
+      if (pathname === "/api/cms/verify-gate" && method === "POST") {
+        const session = await requireSession(req, res);
+        if (!session) {
+          return true;
+        }
+        if (!canManageUsers(session.role)) {
+          sendJson(res, 403, { ok: false, error: "forbidden" });
+          return true;
+        }
+
+        const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
+        const state = await readState();
+        const validation = await validateSecurityGate(state, session, body.gate);
+        if (!validation.ok) {
+          sendJson(res, validation.status, { ok: false, error: validation.error });
+          return true;
+        }
+
+        sendJson(res, 200, { ok: true });
         return true;
       }
 
@@ -1016,40 +1272,20 @@ export function createCmsApiHandler(options = {}) {
           return true;
         }
 
-        const body = await readJsonBody(req);
+        const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
         const userId = String(body.userId || "").trim();
         const password = String(body.password || "").trim();
-        const gate = body.gate && typeof body.gate === "object" ? body.gate : null;
+        const gate = body.gate;
 
         if (!userId || password.length < 8 || !gate) {
           sendJson(res, 400, { ok: false, error: "invalid_payload" });
           return true;
         }
 
-        const authLogin = String(gate.authLogin || "").trim().toLowerCase();
-        const authPassword = String(gate.authPassword || "");
-        const codeword = String(gate.codeword || "").trim();
-        const sessionUserId = String(gate.sessionUserId || "").trim();
-
-        if (!authLogin || !authPassword || !codeword || !sessionUserId) {
-          sendJson(res, 400, { ok: false, error: "invalid_gate" });
-          return true;
-        }
-
-        if (sha256(codeword) !== SECURITY_CODEWORD_HASH) {
-          sendJson(res, 403, { ok: false, error: "invalid_codeword" });
-          return true;
-        }
-
         const state = await readState();
-        const verifiedUser = await verifyCredentials(state, authLogin, authPassword);
-        if (!verifiedUser) {
-          sendJson(res, 403, { ok: false, error: "invalid_auth" });
-          return true;
-        }
-
-        if (verifiedUser.id !== sessionUserId || verifiedUser.role !== ROLE_ADMIN || session.id !== sessionUserId) {
-          sendJson(res, 403, { ok: false, error: "forbidden" });
+        const validation = await validateSecurityGate(state, session, gate);
+        if (!validation.ok) {
+          sendJson(res, validation.status, { ok: false, error: validation.error });
           return true;
         }
 
@@ -1059,7 +1295,7 @@ export function createCmsApiHandler(options = {}) {
           return true;
         }
 
-        const hashed = sha256(password);
+        const hashed = hashPasswordForStorage(password);
         state.users = state.users.map((user) =>
           user.id === userId
             ? {
@@ -1074,7 +1310,7 @@ export function createCmsApiHandler(options = {}) {
         state.updatedAt = nowIso();
 
         const saved = await queueWrite(state);
-        sendJson(res, 200, { ok: true, state: saved });
+        sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;
       }
 
