@@ -383,6 +383,7 @@ function queueRemoteDraftSync(snapshotDraft) {
     clearTimeout(draftSyncTimer);
   }
 
+  // Небольшой debounce: при активном наборе текста не шлём десятки запросов в API.
   draftSyncTimer = setTimeout(() => {
     const nextDraft = queuedDraftSnapshot ? cloneDeep(queuedDraftSnapshot) : null;
     queuedDraftSnapshot = null;
@@ -418,6 +419,7 @@ export async function flushDraftSync() {
     queuedDraftSnapshot = null;
     if (pending) {
       try {
+        // Форсируем последнюю несохранённую правку перед публикацией/выходом.
         const result = await requestCms("/draft", {
           method: "POST",
           body: { draft: pending },
@@ -618,6 +620,114 @@ export async function publishDraft(userId) {
   return state;
 }
 
+function normalizeVersionEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  return {
+    id: String(entry.id || ""),
+    createdAt: entry.createdAt || null,
+    trigger: entry.trigger || "draft",
+    actorId: entry.actorId || null,
+    actorName: entry.actorName || null,
+    actorLogin: entry.actorLogin || null,
+    actorRole: entry.actorRole || null,
+    sourceUpdatedAt: entry.sourceUpdatedAt || null,
+    sourcePublishedAt: entry.sourcePublishedAt || null,
+    sourceLastPublishedBy: entry.sourceLastPublishedBy || null,
+    sizeBytes: Number.isFinite(Number(entry.sizeBytes)) ? Number(entry.sizeBytes) : null
+  };
+}
+
+function normalizeVersionsList(rawList) {
+  if (!Array.isArray(rawList)) {
+    return [];
+  }
+  return rawList.map(normalizeVersionEntry).filter((item) => item && item.id);
+}
+
+export async function fetchVersions() {
+  if (!hasFetchApi()) {
+    throw new Error("server_unavailable");
+  }
+  try {
+    const result = await requestCms("/versions", { method: "GET", allowUnauthorized: true });
+    if (!result.ok || result.unauthorized) {
+      throw new Error("unauthorized");
+    }
+    return {
+      versions: normalizeVersionsList(result.payload?.versions),
+      limit: Number(result.payload?.limit) || null
+    };
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
+    }
+    throw error;
+  }
+}
+
+export async function rollbackToVersion(versionId) {
+  if (!hasFetchApi()) {
+    throw new Error("server_unavailable");
+  }
+  const safeId = String(versionId || "").trim();
+  if (!safeId) {
+    throw new Error("invalid_version_id");
+  }
+  try {
+    const result = await requestCms("/versions/rollback", {
+      method: "POST",
+      body: { versionId: safeId },
+      allowUnauthorized: true
+    });
+    if (!result.ok || result.unauthorized) {
+      throw new Error("unauthorized");
+    }
+    const normalizedState = result.payload?.state ? normalizeState(result.payload.state) : null;
+    if (normalizedState) {
+      cacheStateRaw(normalizedState);
+    }
+    return {
+      state: normalizedState,
+      versions: normalizeVersionsList(result.payload?.versions)
+    };
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
+    }
+    throw error;
+  }
+}
+
+export async function deleteVersionRemote(versionId) {
+  if (!hasFetchApi()) {
+    throw new Error("server_unavailable");
+  }
+  const safeId = String(versionId || "").trim();
+  if (!safeId) {
+    throw new Error("invalid_version_id");
+  }
+  try {
+    const result = await requestCms("/versions/delete", {
+      method: "POST",
+      body: { versionId: safeId },
+      allowUnauthorized: true
+    });
+    if (!result.ok || result.unauthorized) {
+      throw new Error("unauthorized");
+    }
+    return {
+      versions: normalizeVersionsList(result.payload?.versions)
+    };
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
+    }
+    throw error;
+  }
+}
+
 export function resetCms() {
   const initial = createBaseState();
   saveCmsState(initial);
@@ -635,6 +745,7 @@ export function saveDraft(mutator) {
   normalizeActionLimits(state.draft);
   state.updatedAt = nowIso();
   saveCmsState(state);
+  // Локально сохраняем сразу, на сервер отправляем асинхронно с debounce.
   queueRemoteDraftSync(state.draft);
   return state;
 }
@@ -846,8 +957,14 @@ export async function verifySensitiveGate(gate = null) {
 
 export async function setUserPassword(userId, password, gate = null) {
   const normalizedPassword = String(password || "").trim();
-  if (normalizedPassword.length < 8) {
+  if (normalizedPassword.length < 10) {
     throw new Error("password_too_short");
+  }
+  if (!/[a-zа-яё]/i.test(normalizedPassword)) {
+    throw new Error("password_missing_letter");
+  }
+  if (!/\d/.test(normalizedPassword)) {
+    throw new Error("password_missing_digit");
   }
 
   if (!gate || typeof gate !== "object") {

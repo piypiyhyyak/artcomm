@@ -482,23 +482,27 @@ const homeMarkup = String.raw`
                 <input type="text" name="name" placeholder="Имя" required>
               </label>
               <label class="contact-field">
-                <input type="text" name="contact" placeholder="Email" required>
+                <input type="email" name="contact" placeholder="Email" required autocomplete="email">
               </label>
               <label class="contact-field">
                 <textarea name="message" rows="1" placeholder="Ваш вопрос" required></textarea>
               </label>
+              <label class="contact-field contact-field-hp" aria-hidden="true">
+                <input type="text" name="website" tabindex="-1" autocomplete="off">
+              </label>
 
               <label class="contact-check">
                 <input type="checkbox" name="policy" checked required>
-                <span>Я согласен с условиями обработки <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">персональных данных</a></span>
+                <span>Я согласен с условиями обработки <a href="/privacy" target="_blank" rel="noopener noreferrer">персональных данных</a></span>
               </label>
 
               <label class="contact-check">
                 <input type="checkbox" name="newsletter">
-                <span>Я соглашаюсь получать <a href="/assets/ustav-artkommunikacii.pdf" target="_blank" rel="noopener noreferrer">рекламную рассылку</a>.</span>
+                <span>Я соглашаюсь получать <a href="/privacy#marketing-consent" target="_blank" rel="noopener noreferrer">рекламную рассылку</a>.</span>
               </label>
 
               <button class="btn contact-form-submit" type="submit">Отправить</button>
+              <p class="contact-form-status" id="contactFormStatus" role="status" aria-live="polite"></p>
             </form>
           </div>
         </div>

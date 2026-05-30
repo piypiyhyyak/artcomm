@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import nodemailer from "nodemailer";
 import {
   CMS_VERSION,
   DEFAULT_CONTENT,
@@ -18,6 +19,7 @@ const LOGIN_ATTEMPT_LIMIT = 6;
 const LOGIN_COOLDOWN_MS = 1000 * 60 * 5;
 const MAX_BODY_BYTES = 380 * 1024 * 1024;
 const MAX_AUTH_PAYLOAD_BYTES = 8 * 1024;
+const MAX_CONTACT_PAYLOAD_BYTES = 24 * 1024;
 const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
@@ -32,6 +34,21 @@ const LEGACY_ADMIN_PASSWORD_HASH = "893cbcc2f9197dce1feea7c1e80486f27ae0be699408
 const DEFAULT_SECURITY_CODEWORD_HASH = "8fd706e21340a5033ccd4270f22c051de24cabb6b1c4c3ad8f61dc7fb8ad22d6";
 const CHARTER_FALLBACK_URL = "/assets/ustav-artkommunikacii.pdf";
 const RUNTIME_STATE_KEY = "__ARTCOMM_CMS_RUNTIME__";
+const PRIVACY_POLICY_URL = "/privacy";
+const MARKETING_CONSENT_URL = "/privacy#marketing-consent";
+const CONTACT_ATTEMPT_LIMIT = 6;
+const CONTACT_WINDOW_MS = 1000 * 60 * 10;
+const CONTACT_COOLDOWN_MS = 1000 * 60 * 15;
+const CONTACT_NAME_MAX = 120;
+const CONTACT_EMAIL_MAX = 190;
+const CONTACT_MESSAGE_MAX = 3000;
+const CONTACT_MESSAGE_MIN = 5;
+const MIN_PASSWORD_LENGTH = 10;
+const SENSITIVE_ATTEMPT_LIMIT = 5;
+const SENSITIVE_COOLDOWN_MS = 1000 * 60 * 10;
+const DEFAULT_VERSION_LIMIT = 30;
+const MIN_VERSION_LIMIT = 20;
+const MAX_VERSION_LIMIT = 1000;
 
 const PENDING_SUFFIX_RE = /\s*\(файл добавляется\)\s*$/i;
 const PENDING_WITH_OPTIONAL_RE = /\s*\(при наличии,\s*файл добавляется\)\s*$/i;
@@ -100,16 +117,141 @@ function sha256(value) {
   return crypto.createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
 
-function hashPasswordScrypt(password, salt = crypto.randomBytes(SCRYPT_SALT_BYTES)) {
+function hashEqualsHex(left, right) {
+  const normalizedLeft = String(left || "").trim().toLowerCase();
+  const normalizedRight = String(right || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/i.test(normalizedLeft) || !/^[a-f0-9]{64}$/i.test(normalizedRight)) {
+    return false;
+  }
+  const leftBuffer = Buffer.from(normalizedLeft, "hex");
+  const rightBuffer = Buffer.from(normalizedRight, "hex");
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function parseBooleanFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return Boolean(fallback);
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on", "y"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off", "n"].includes(normalized)) {
+    return false;
+  }
+  return Boolean(fallback);
+}
+
+function toInt(value, fallback) {
+  const next = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+function clampVersionLimit(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_VERSION_LIMIT;
+  }
+  return Math.max(MIN_VERSION_LIMIT, Math.min(MAX_VERSION_LIMIT, Math.trunc(value)));
+}
+
+function makeVersionId() {
+  return `ver-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function cleanSingleLine(value, maxLength) {
+  const normalized = String(value || "")
+    .replace(/\u0000/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!maxLength || maxLength <= 0) {
+    return normalized;
+  }
+  return normalized.slice(0, maxLength);
+}
+
+function cleanMultiline(value, maxLength) {
+  const normalized = String(value || "")
+    .replace(/\u0000/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+  if (!maxLength || maxLength <= 0) {
+    return normalized;
+  }
+  return normalized.slice(0, maxLength);
+}
+
+function isValidEmail(value) {
+  const email = String(value || "").trim();
+  if (!email || email.length > CONTACT_EMAIL_MAX) {
+    return false;
+  }
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function stripHeaderValue(value, fallback = "") {
+  const cleaned = String(value || "").replace(/[\r\n]/g, "").trim();
+  return cleaned || fallback;
+}
+
+function parseEmailList(value) {
+  return String(value || "")
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter(isValidEmail);
+}
+
+function resolveContactConfig() {
+  const modeEnv = String(process.env.ARTCOMM_CONTACT_MODE || "").trim().toLowerCase();
+  const smtpHost = String(process.env.ARTCOMM_CONTACT_SMTP_HOST || "").trim();
+  const smtpSecure = parseBooleanFlag(process.env.ARTCOMM_CONTACT_SMTP_SECURE, false);
+  const smtpPortDefault = smtpSecure ? 465 : 587;
+  const smtpPort = toInt(process.env.ARTCOMM_CONTACT_SMTP_PORT, smtpPortDefault);
+  const smtpUser = String(process.env.ARTCOMM_CONTACT_SMTP_USER || "").trim();
+  const smtpPass = String(process.env.ARTCOMM_CONTACT_SMTP_PASS || "").trim();
+  const mailFrom = stripHeaderValue(
+    process.env.ARTCOMM_CONTACT_FROM || "АртКомм <no-reply@artcomminstitute.ru>",
+    "АртКомм <no-reply@artcomminstitute.ru>"
+  );
+  const mailTo = parseEmailList(process.env.ARTCOMM_CONTACT_TO || "info@artcommrf.ru");
+  const mailCc = parseEmailList(process.env.ARTCOMM_CONTACT_CC || "");
+  const mode = modeEnv || (smtpHost && smtpUser && smtpPass && mailTo.length ? "smtp" : "log");
+
+  return {
+    mode,
+    smtpHost,
+    smtpPort,
+    smtpSecure,
+    smtpUser,
+    smtpPass,
+    mailFrom,
+    mailTo,
+    mailCc
+  };
+}
+
+function hashPasswordScrypt(password, salt = crypto.randomBytes(SCRYPT_SALT_BYTES), pepper = "") {
   const plain = String(password || "");
-  const derived = crypto.scryptSync(plain, salt, SCRYPT_KEYLEN, {
+  const safePepper = String(pepper || "");
+  const material = safePepper ? `${plain}${safePepper}` : plain;
+  const derived = crypto.scryptSync(material, salt, SCRYPT_KEYLEN, {
     N: SCRYPT_N,
     r: SCRYPT_R,
     p: SCRYPT_P,
     maxmem: SCRYPT_MAXMEM
   });
   return [
-    "scrypt",
+    safePepper ? "scryptp" : "scrypt",
     String(SCRYPT_N),
     String(SCRYPT_R),
     String(SCRYPT_P),
@@ -118,8 +260,8 @@ function hashPasswordScrypt(password, salt = crypto.randomBytes(SCRYPT_SALT_BYTE
   ].join("$");
 }
 
-function verifyScryptHash(password, encoded) {
-  if (typeof encoded !== "string" || !encoded.startsWith("scrypt$")) {
+function verifyScryptHash(password, encoded, pepper = "") {
+  if (typeof encoded !== "string" || (!encoded.startsWith("scrypt$") && !encoded.startsWith("scryptp$"))) {
     return false;
   }
   const parts = encoded.split("$");
@@ -127,7 +269,7 @@ function verifyScryptHash(password, encoded) {
     return false;
   }
 
-  const [, nRaw, rRaw, pRaw, saltRaw, hashRaw] = parts;
+  const [scheme, nRaw, rRaw, pRaw, saltRaw, hashRaw] = parts;
   const n = Number(nRaw);
   const r = Number(rRaw);
   const p = Number(pRaw);
@@ -149,7 +291,9 @@ function verifyScryptHash(password, encoded) {
 
   let actual;
   try {
-    actual = crypto.scryptSync(String(password || ""), salt, expected.length, {
+    const safePepper = String(pepper || "");
+    const material = scheme === "scryptp" ? `${String(password || "")}${safePepper}` : String(password || "");
+    actual = crypto.scryptSync(material, salt, expected.length, {
       N: n,
       r,
       p,
@@ -162,13 +306,16 @@ function verifyScryptHash(password, encoded) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-function verifyPasswordHash(password, storedHash) {
+function verifyPasswordHash(password, storedHash, pepper = "") {
   const hash = String(storedHash || "").trim();
   if (!hash) {
     return false;
   }
+  if (hash.startsWith("scryptp$")) {
+    return verifyScryptHash(password, hash, pepper);
+  }
   if (hash.startsWith("scrypt$")) {
-    return verifyScryptHash(password, hash);
+    return verifyScryptHash(password, hash, "");
   }
   if (/^[a-f0-9]{64}$/i.test(hash)) {
     const actualHex = sha256(password);
@@ -181,11 +328,29 @@ function verifyPasswordHash(password, storedHash) {
 
 function isSupportedPasswordHashFormat(hashValue) {
   const hash = String(hashValue || "").trim();
-  return hash.startsWith("scrypt$") || /^[a-f0-9]{64}$/i.test(hash);
+  return hash.startsWith("scrypt$") || hash.startsWith("scryptp$") || /^[a-f0-9]{64}$/i.test(hash);
 }
 
-function hashPasswordForStorage(password) {
-  return hashPasswordScrypt(password);
+function hashPasswordForStorage(password, pepper = "") {
+  return hashPasswordScrypt(password, crypto.randomBytes(SCRYPT_SALT_BYTES), pepper);
+}
+
+function isScryptPepperedHash(hashValue) {
+  return String(hashValue || "").trim().startsWith("scryptp$");
+}
+
+function validatePasswordStrength(password) {
+  const value = String(password || "");
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    return { ok: false, code: "password_too_short" };
+  }
+  if (!/[a-zа-яё]/i.test(value)) {
+    return { ok: false, code: "password_missing_letter" };
+  }
+  if (!/\d/.test(value)) {
+    return { ok: false, code: "password_missing_digit" };
+  }
+  return { ok: true, code: "" };
 }
 
 function sanitizeUserForClient(user) {
@@ -212,30 +377,66 @@ function sanitizeStateForClient(state) {
   };
 }
 
+function sanitizeVersionForClient(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  return {
+    id: entry.id,
+    createdAt: entry.createdAt || null,
+    trigger: entry.trigger || "draft",
+    actorId: entry.actorId || null,
+    actorName: entry.actorName || null,
+    actorLogin: entry.actorLogin || null,
+    actorRole: entry.actorRole || null,
+    sourceUpdatedAt: entry.sourceUpdatedAt || null,
+    sourcePublishedAt: entry.sourcePublishedAt || null,
+    sourceLastPublishedBy: entry.sourceLastPublishedBy || null,
+    sizeBytes: entry.sizeBytes ?? null
+  };
+}
+
 function resolveSecurityConfig() {
   const adminLogin = normalizeLogin(process.env.ARTCOMM_CMS_ADMIN_LOGIN || DEFAULT_ADMIN_LOGIN) || DEFAULT_ADMIN_LOGIN;
   const adminPassword = String(process.env.ARTCOMM_CMS_ADMIN_PASSWORD || "");
   const adminPasswordHashRaw = String(process.env.ARTCOMM_CMS_ADMIN_PASSWORD_HASH || "").trim();
   const securityCodeword = String(process.env.ARTCOMM_CMS_SECURITY_CODEWORD || "");
   const securityCodewordHashRaw = String(process.env.ARTCOMM_CMS_SECURITY_CODEWORD_HASH || "").trim();
+  const passwordPepper = String(process.env.ARTCOMM_CMS_PASSWORD_PEPPER || "");
+  const hasAdminSecret = Boolean(adminPassword || adminPasswordHashRaw);
+  const hasCodewordSecret = Boolean(securityCodeword || securityCodewordHashRaw);
 
   let adminPasswordHash = DEFAULT_ADMIN_PASSWORD_HASH_LEGACY;
+  let isAdminSecretValid = false;
   if (adminPassword) {
-    adminPasswordHash = hashPasswordForStorage(adminPassword);
+    const strength = validatePasswordStrength(adminPassword);
+    if (!strength.ok) {
+      throw new Error(strength.code);
+    }
+    adminPasswordHash = hashPasswordForStorage(adminPassword, passwordPepper);
+    isAdminSecretValid = true;
   } else if (adminPasswordHashRaw && isSupportedPasswordHashFormat(adminPasswordHashRaw)) {
     adminPasswordHash = adminPasswordHashRaw;
+    isAdminSecretValid = true;
   }
 
+  const isSecurityCodewordHashRawValid = /^[a-f0-9]{64}$/i.test(securityCodewordHashRaw);
   const securityCodewordHash = securityCodeword
     ? sha256(securityCodeword)
-    : /^[a-f0-9]{64}$/i.test(securityCodewordHashRaw)
+    : isSecurityCodewordHashRawValid
       ? securityCodewordHashRaw.toLowerCase()
       : DEFAULT_SECURITY_CODEWORD_HASH;
+  const isCodewordSecretValid = Boolean(securityCodeword || isSecurityCodewordHashRawValid);
 
   return {
     adminLogin,
     adminPasswordHash,
-    securityCodewordHash
+    securityCodewordHash,
+    passwordPepper,
+    hasAdminSecret,
+    hasCodewordSecret,
+    isAdminSecretValid,
+    isCodewordSecretValid
   };
 }
 
@@ -365,6 +566,33 @@ function normalizeHomeMediaSources(content) {
     media.videoDesktop = unified;
     media.videoMobile = unified;
     media.videoFallback = unified;
+  }
+
+  return changed;
+}
+
+function normalizeContactsLegalLinks(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const section = content.home.contactsSection;
+  if (!section || typeof section !== "object") {
+    return false;
+  }
+
+  let changed = false;
+  const policyLink = String(section.policyLink || "").trim();
+  const newsLink = String(section.newsLink || "").trim();
+
+  if (!policyLink || policyLink === CHARTER_FALLBACK_URL) {
+    section.policyLink = PRIVACY_POLICY_URL;
+    changed = true;
+  }
+
+  if (!newsLink || newsLink === CHARTER_FALLBACK_URL) {
+    section.newsLink = MARKETING_CONSENT_URL;
+    changed = true;
   }
 
   return changed;
@@ -546,6 +774,8 @@ function normalizeState(parsed, securityConfig) {
   normalizeAboutDocuments(merged.published);
   normalizeHomeMediaSources(merged.draft);
   normalizeHomeMediaSources(merged.published);
+  normalizeContactsLegalLinks(merged.draft);
+  normalizeContactsLegalLinks(merged.published);
   normalizeModals(merged.draft);
   normalizeModals(merged.published);
   normalizeActionLimits(merged.draft);
@@ -797,13 +1027,24 @@ function makeExpiredSessionCookie(req) {
 
 function getRuntimeState() {
   const root = globalThis;
-  if (!root[RUNTIME_STATE_KEY]) {
-    root[RUNTIME_STATE_KEY] = {
-      sessions: new Map(),
-      loginGuards: new Map()
-    };
+  const state = root[RUNTIME_STATE_KEY] || {};
+  if (!(state.sessions instanceof Map)) {
+    state.sessions = new Map();
   }
-  return root[RUNTIME_STATE_KEY];
+  if (!(state.loginGuards instanceof Map)) {
+    state.loginGuards = new Map();
+  }
+  if (!(state.contactGuards instanceof Map)) {
+    state.contactGuards = new Map();
+  }
+  if (!(state.sensitiveGuards instanceof Map)) {
+    state.sensitiveGuards = new Map();
+  }
+  if (!("contactMailer" in state)) {
+    state.contactMailer = null;
+  }
+  root[RUNTIME_STATE_KEY] = state;
+  return state;
 }
 
 function extractClientIp(req) {
@@ -815,13 +1056,28 @@ export function createCmsApiHandler(options = {}) {
   const rootDir = path.resolve(options.rootDir || process.cwd());
   const dataDir = path.resolve(process.env.ARTCOMM_CMS_DATA_DIR || path.join(rootDir, "cms-data"));
   const stateFile = path.join(dataDir, "state.json");
+  const versionsDir = path.join(dataDir, "versions");
+  const versionsIndexFile = path.join(versionsDir, "index.json");
+  const versionLimit = clampVersionLimit(toInt(process.env.ARTCOMM_CMS_VERSION_LIMIT, DEFAULT_VERSION_LIMIT));
   const publicDir = path.resolve(process.env.ARTCOMM_CMS_PUBLIC_DIR || path.join(rootDir, "public"));
   const assetsDir = path.resolve(process.env.ARTCOMM_CMS_ASSETS_DIR || path.join(publicDir, "assets"));
   const securityConfig = resolveSecurityConfig();
+  const contactConfig = resolveContactConfig();
+  const contactLogFile = path.join(dataDir, "contact-submissions.jsonl");
+  const requireEnvSecrets = parseBooleanFlag(process.env.ARTCOMM_CMS_REQUIRE_ENV_SECRETS, false);
+
+  if (
+    requireEnvSecrets &&
+    (!securityConfig.hasAdminSecret || !securityConfig.hasCodewordSecret || !securityConfig.isAdminSecretValid || !securityConfig.isCodewordSecretValid)
+  ) {
+    throw new Error("missing_required_security_env");
+  }
 
   const runtimeState = getRuntimeState();
   const sessions = runtimeState.sessions;
   const loginGuards = runtimeState.loginGuards;
+  const contactGuards = runtimeState.contactGuards;
+  const sensitiveGuards = runtimeState.sensitiveGuards;
 
   let writeChain = Promise.resolve();
 
@@ -844,16 +1100,241 @@ export function createCmsApiHandler(options = {}) {
     }
   }
 
-  function queueWrite(state) {
+  async function ensureVersionsStorage() {
+    await fsp.mkdir(versionsDir, { recursive: true });
+    if (!fs.existsSync(versionsIndexFile)) {
+      // Индекс версий храним отдельно от state.json, чтобы откаты не конфликтовали с основным состоянием.
+      await fsp.writeFile(versionsIndexFile, JSON.stringify([], null, 2));
+    }
+  }
+
+  function normalizeVersionId(rawValue) {
+    const value = String(rawValue || "").trim();
+    if (!value || !/^[a-z0-9][a-z0-9-]{5,80}$/i.test(value)) {
+      throw new Error("invalid_version_id");
+    }
+    return value;
+  }
+
+  function sanitizeVersionEntry(entry) {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+
+    const id = String(entry.id || "").trim();
+    const fileName = path.basename(String(entry.fileName || "").trim());
+    if (!id || !fileName || path.extname(fileName).toLowerCase() !== ".json") {
+      return null;
+    }
+
+    const createdAt = String(entry.createdAt || "").trim() || nowIso();
+    const trigger = String(entry.trigger || "").trim() || "draft";
+    const actorId = String(entry.actorId || "").trim() || null;
+    const actorName = String(entry.actorName || "").trim() || null;
+    const actorLogin = String(entry.actorLogin || "").trim() || null;
+    const actorRole = String(entry.actorRole || "").trim() || null;
+    const checksum = String(entry.checksum || "").trim() || null;
+    const sizeBytes = Number(entry.sizeBytes);
+
+    return {
+      id,
+      createdAt,
+      trigger,
+      actorId,
+      actorName,
+      actorLogin,
+      actorRole,
+      sourceUpdatedAt: entry.sourceUpdatedAt || null,
+      sourcePublishedAt: entry.sourcePublishedAt || null,
+      sourceLastPublishedBy: entry.sourceLastPublishedBy || null,
+      checksum,
+      sizeBytes: Number.isFinite(sizeBytes) && sizeBytes >= 0 ? Math.floor(sizeBytes) : null,
+      fileName
+    };
+  }
+
+  function sortVersions(list) {
+    return [...list].sort((left, right) => {
+      const leftTs = Date.parse(left.createdAt || "") || 0;
+      const rightTs = Date.parse(right.createdAt || "") || 0;
+      return rightTs - leftTs;
+    });
+  }
+
+  async function readVersionsIndex() {
+    await ensureVersionsStorage();
+    try {
+      const raw = await fsp.readFile(versionsIndexFile, "utf8");
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      const safe = parsed.map(sanitizeVersionEntry).filter(Boolean);
+      return sortVersions(safe).slice(0, versionLimit);
+    } catch {
+      return [];
+    }
+  }
+
+  async function writeVersionsIndex(entries) {
+    await ensureVersionsStorage();
+    const prepared = sortVersions(entries.map(sanitizeVersionEntry).filter(Boolean)).slice(0, versionLimit);
+    const tempFile = `${versionsIndexFile}.tmp`;
+    await fsp.writeFile(tempFile, JSON.stringify(prepared, null, 2));
+    await fsp.rename(tempFile, versionsIndexFile);
+    return prepared;
+  }
+
+  function getVersionSnapshotPath(fileName) {
+    const safeName = path.basename(String(fileName || "").trim());
+    if (!safeName || path.extname(safeName).toLowerCase() !== ".json") {
+      throw new Error("invalid_version_file");
+    }
+    const absoluteFile = path.resolve(versionsDir, safeName);
+    const base = path.resolve(versionsDir);
+    if (!absoluteFile.startsWith(base + path.sep) && absoluteFile !== base) {
+      throw new Error("invalid_version_file");
+    }
+    return absoluteFile;
+  }
+
+  function prepareSnapshotPayload(nextState) {
+    return {
+      draft: cloneDeep(nextState.draft),
+      published: cloneDeep(nextState.published),
+      updatedAt: nextState.updatedAt || null,
+      publishedAt: nextState.publishedAt || null,
+      lastPublishedBy: nextState.lastPublishedBy || null
+    };
+  }
+
+  async function createVersionSnapshot(nextState, snapshotMeta = {}) {
+    await ensureVersionsStorage();
+    // В снапшот складываем только данные CMS, без пользовательских паролей/служебных runtime-структур.
+    const snapshotState = prepareSnapshotPayload(nextState);
+    const checksum = sha256(JSON.stringify(snapshotState));
+    const id = makeVersionId();
+    const fileName = `${id}.json`;
+    const createdAt = nowIso();
+    const entry = sanitizeVersionEntry({
+      id,
+      createdAt,
+      trigger: snapshotMeta.trigger || "draft",
+      actorId: snapshotMeta.actorId || null,
+      actorName: snapshotMeta.actorName || null,
+      actorLogin: snapshotMeta.actorLogin || null,
+      actorRole: snapshotMeta.actorRole || null,
+      sourceUpdatedAt: nextState.updatedAt || null,
+      sourcePublishedAt: nextState.publishedAt || null,
+      sourceLastPublishedBy: nextState.lastPublishedBy || null,
+      checksum,
+      fileName
+    });
+
+    const payload = {
+      meta: entry,
+      state: snapshotState
+    };
+    const payloadText = JSON.stringify(payload, null, 2);
+    entry.sizeBytes = Buffer.byteLength(payloadText, "utf8");
+
+    const snapshotFile = getVersionSnapshotPath(fileName);
+    const tempSnapshotFile = `${snapshotFile}.tmp`;
+    await fsp.writeFile(tempSnapshotFile, payloadText);
+    await fsp.rename(tempSnapshotFile, snapshotFile);
+
+    const current = await readVersionsIndex();
+    const unique = [entry, ...current.filter((item) => item.id !== entry.id)];
+    const kept = unique.slice(0, versionLimit);
+    const dropped = unique.slice(versionLimit);
+    await writeVersionsIndex(kept);
+
+    // Старые архивы удаляем физически, чтобы не раздувать дисковое хранилище.
+    await Promise.all(
+      dropped.map(async (item) => {
+        try {
+          await fsp.unlink(getVersionSnapshotPath(item.fileName));
+        } catch {
+          // Ignore cleanup failures.
+        }
+      })
+    );
+
+    return entry;
+  }
+
+  async function loadVersionSnapshot(versionId) {
+    const id = normalizeVersionId(versionId);
+    const versions = await readVersionsIndex();
+    const entry = versions.find((item) => item.id === id);
+    if (!entry) {
+      throw new Error("version_not_found");
+    }
+
+    const snapshotFile = getVersionSnapshotPath(entry.fileName);
+    let parsed;
+    try {
+      const raw = await fsp.readFile(snapshotFile, "utf8");
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error("version_corrupted");
+    }
+
+    const snapshotState = parsed && typeof parsed === "object" ? parsed.state : null;
+    if (!snapshotState || typeof snapshotState !== "object") {
+      throw new Error("version_corrupted");
+    }
+    if (!snapshotState.draft || typeof snapshotState.draft !== "object") {
+      throw new Error("version_corrupted");
+    }
+    if (!snapshotState.published || typeof snapshotState.published !== "object") {
+      throw new Error("version_corrupted");
+    }
+
+    return {
+      entry,
+      snapshotState
+    };
+  }
+
+  async function deleteVersion(versionId) {
+    const id = normalizeVersionId(versionId);
+    const versions = await readVersionsIndex();
+    const target = versions.find((item) => item.id === id);
+    if (!target) {
+      throw new Error("version_not_found");
+    }
+    const nextVersions = versions.filter((item) => item.id !== id);
+    await writeVersionsIndex(nextVersions);
+    try {
+      await fsp.unlink(getVersionSnapshotPath(target.fileName));
+    } catch {
+      // Ignore missing file during cleanup.
+    }
+    return sortVersions(nextVersions);
+  }
+
+  function queueWrite(state, options = {}) {
     const next = normalizeState(state, securityConfig);
+    const snapshot = options && options.snapshot && typeof options.snapshot === "object" ? options.snapshot : null;
+    let snapshotEntry = null;
+
     writeChain = writeChain
       .then(async () => {
         await ensureStateFile();
         const tempFile = `${stateFile}.tmp`;
         await fsp.writeFile(tempFile, JSON.stringify(next, null, 2));
         await fsp.rename(tempFile, stateFile);
+        if (snapshot) {
+          // Снапшот создаётся строго после успешной записи state — в архив не попадает "битая" версия.
+          snapshotEntry = await createVersionSnapshot(next, snapshot);
+        }
       })
       .catch(() => {});
+
+    if (options.withMeta) {
+      return writeChain.then(() => ({ state: next, snapshot: snapshotEntry }));
+    }
     return writeChain.then(() => next);
   }
 
@@ -913,6 +1394,236 @@ export function createCmsApiHandler(options = {}) {
     loginGuards.delete(key);
   }
 
+  function cleanupContactGuards() {
+    const now = Date.now();
+    for (const [key, entry] of contactGuards.entries()) {
+      if (!entry) {
+        contactGuards.delete(key);
+        continue;
+      }
+
+      const recent = Array.isArray(entry.attempts)
+        ? entry.attempts.filter((stamp) => Number.isFinite(stamp) && now - stamp <= CONTACT_WINDOW_MS)
+        : [];
+      const lockUntil = Number(entry.lockUntil) || 0;
+
+      if (!recent.length && lockUntil <= now) {
+        contactGuards.delete(key);
+      } else {
+        contactGuards.set(key, { attempts: recent, lockUntil });
+      }
+    }
+  }
+
+  function getContactGuard(req) {
+    cleanupContactGuards();
+    const key = extractClientIp(req);
+    const entry = contactGuards.get(key);
+    if (!entry) {
+      return { key, attempts: [], lockUntil: 0 };
+    }
+    return {
+      key,
+      attempts: Array.isArray(entry.attempts) ? entry.attempts.slice() : [],
+      lockUntil: Number(entry.lockUntil) || 0
+    };
+  }
+
+  function setContactGuard(next) {
+    if (!next || !next.key) {
+      return;
+    }
+    contactGuards.set(next.key, {
+      attempts: Array.isArray(next.attempts) ? next.attempts.slice() : [],
+      lockUntil: Number(next.lockUntil) || 0
+    });
+  }
+
+  function cleanupSensitiveGuards() {
+    const now = Date.now();
+    for (const [key, entry] of sensitiveGuards.entries()) {
+      if (!entry) {
+        sensitiveGuards.delete(key);
+        continue;
+      }
+      const lockUntil = Number(entry.lockUntil) || 0;
+      const lastFailedAt = Number(entry.lastFailedAt) || 0;
+      const isStale = !lockUntil && lastFailedAt > 0 && now - lastFailedAt > SENSITIVE_COOLDOWN_MS;
+      if (lockUntil <= now && !Number(entry.failedAttempts) && !lastFailedAt) {
+        sensitiveGuards.delete(key);
+      } else if (isStale) {
+        sensitiveGuards.delete(key);
+      }
+    }
+  }
+
+  function getSensitiveGuard(req, sessionUserId) {
+    cleanupSensitiveGuards();
+    const key = `${extractClientIp(req)}::${String(sessionUserId || "unknown")}`;
+    const entry = sensitiveGuards.get(key);
+    if (!entry) {
+      return { key, failedAttempts: 0, lockUntil: 0, lastFailedAt: 0 };
+    }
+    return {
+      key,
+      failedAttempts: Number(entry.failedAttempts) || 0,
+      lockUntil: Number(entry.lockUntil) || 0,
+      lastFailedAt: Number(entry.lastFailedAt) || 0
+    };
+  }
+
+  function setSensitiveGuard(next) {
+    if (!next || !next.key) {
+      return;
+    }
+    sensitiveGuards.set(next.key, {
+      failedAttempts: Number(next.failedAttempts) || 0,
+      lockUntil: Number(next.lockUntil) || 0,
+      lastFailedAt: Number(next.lastFailedAt) || 0
+    });
+  }
+
+  function clearSensitiveGuard(req, sessionUserId) {
+    const key = `${extractClientIp(req)}::${String(sessionUserId || "unknown")}`;
+    sensitiveGuards.delete(key);
+  }
+
+  function toBool(value) {
+    return value === true || value === "true" || value === "1" || value === 1 || value === "on";
+  }
+
+  function normalizeContactRequest(rawBody) {
+    const body = rawBody && typeof rawBody === "object" ? rawBody : {};
+    const name = cleanSingleLine(body.name, CONTACT_NAME_MAX);
+    const email = cleanSingleLine(body.contact, CONTACT_EMAIL_MAX).toLowerCase();
+    const message = cleanMultiline(body.message, CONTACT_MESSAGE_MAX);
+    const policyAccepted = toBool(body.policyAccepted);
+    const newsletterAccepted = toBool(body.newsletterAccepted);
+    const honeypot = cleanSingleLine(body.website, 180);
+
+    if (!name || !email || !message) {
+      throw new Error("invalid_payload");
+    }
+    if (message.length < CONTACT_MESSAGE_MIN) {
+      throw new Error("invalid_payload");
+    }
+    if (!isValidEmail(email)) {
+      throw new Error("invalid_email");
+    }
+    if (!policyAccepted) {
+      throw new Error("invalid_policy");
+    }
+
+    return {
+      name,
+      email,
+      message,
+      policyAccepted,
+      newsletterAccepted,
+      honeypot
+    };
+  }
+
+  async function appendContactLog(entry) {
+    await fsp.mkdir(dataDir, { recursive: true });
+    await fsp.appendFile(contactLogFile, `${JSON.stringify(entry)}\n`, "utf8");
+  }
+
+  function buildContactEmailHtml(payload, metadata) {
+    const escapeLineBreaks = (value) => escapeHtml(value).replace(/\n/g, "<br>");
+    const rows = [
+      ["Имя", escapeHtml(payload.name)],
+      ["Email", escapeHtml(payload.email)],
+      ["Сообщение", escapeLineBreaks(payload.message)],
+      ["Согласие на ПДн", payload.policyAccepted ? "Да" : "Нет"],
+      ["Согласие на рассылку", payload.newsletterAccepted ? "Да" : "Нет"],
+      ["IP", escapeHtml(metadata.ip)],
+      ["Дата", escapeHtml(metadata.createdAt)],
+      ["User-Agent", escapeHtml(metadata.userAgent || "")]
+    ];
+
+    const rowsHtml = rows
+      .map(([key, value]) => {
+        return `<tr><td style="padding:8px;border:1px solid #c9d4e2;background:#f6f8fc;font-weight:600;">${key}</td><td style="padding:8px;border:1px solid #c9d4e2;">${value}</td></tr>`;
+      })
+      .join("");
+
+    return `<div style="font-family:Arial,sans-serif;color:#1a2d45;"><h2 style="margin:0 0 12px;">Новая заявка с формы «Написать нам»</h2><table style="border-collapse:collapse;width:100%;max-width:820px;">${rowsHtml}</table></div>`;
+  }
+
+  function getContactTransport() {
+    if (runtimeState.contactMailer) {
+      return runtimeState.contactMailer;
+    }
+
+    runtimeState.contactMailer = nodemailer.createTransport({
+      host: contactConfig.smtpHost,
+      port: contactConfig.smtpPort,
+      secure: contactConfig.smtpSecure,
+      auth:
+        contactConfig.smtpUser && contactConfig.smtpPass
+          ? {
+              user: contactConfig.smtpUser,
+              pass: contactConfig.smtpPass
+            }
+          : undefined
+    });
+    return runtimeState.contactMailer;
+  }
+
+  function isSmtpConfigured() {
+    return Boolean(
+      contactConfig.smtpHost &&
+        Number.isFinite(contactConfig.smtpPort) &&
+        contactConfig.mailTo.length &&
+        contactConfig.mailFrom &&
+        contactConfig.smtpUser &&
+        contactConfig.smtpPass
+    );
+  }
+
+  async function deliverContactMessage(payload, metadata) {
+    const subject = `Заявка с сайта АртКомм: ${payload.name}`;
+
+    if (contactConfig.mode === "smtp") {
+      if (!isSmtpConfigured()) {
+        throw new Error("service_unavailable");
+      }
+      const transporter = getContactTransport();
+      const text = [
+        "Новая заявка с формы «Написать нам»",
+        "",
+        `Имя: ${payload.name}`,
+        `Email: ${payload.email}`,
+        `Сообщение: ${payload.message}`,
+        `Согласие на ПДн: ${payload.policyAccepted ? "Да" : "Нет"}`,
+        `Согласие на рассылку: ${payload.newsletterAccepted ? "Да" : "Нет"}`,
+        `IP: ${metadata.ip}`,
+        `Дата: ${metadata.createdAt}`,
+        `User-Agent: ${metadata.userAgent || ""}`
+      ].join("\n");
+
+      await transporter.sendMail({
+        from: contactConfig.mailFrom,
+        to: contactConfig.mailTo.join(", "),
+        cc: contactConfig.mailCc.length ? contactConfig.mailCc.join(", ") : undefined,
+        replyTo: payload.email,
+        subject,
+        text,
+        html: buildContactEmailHtml(payload, metadata)
+      });
+      return;
+    }
+
+    await appendContactLog({
+      id: metadata.id,
+      createdAt: metadata.createdAt,
+      ip: metadata.ip,
+      userAgent: metadata.userAgent || "",
+      payload
+    });
+  }
+
   function readSecurityGate(gateRaw) {
     const gate = gateRaw && typeof gateRaw === "object" ? gateRaw : null;
     if (!gate) {
@@ -936,25 +1647,54 @@ export function createCmsApiHandler(options = {}) {
     };
   }
 
-  async function validateSecurityGate(state, session, gateRaw) {
+  function registerSensitiveFailure(req, sessionUserId) {
+    const now = Date.now();
+    const guard = getSensitiveGuard(req, sessionUserId);
+    const isWithinWindow = guard.lastFailedAt > 0 && now - guard.lastFailedAt <= SENSITIVE_COOLDOWN_MS;
+    const baseAttempts = isWithinWindow ? guard.failedAttempts || 0 : 0;
+    const failedAttempts = baseAttempts + 1;
+    const lockUntil = failedAttempts >= SENSITIVE_ATTEMPT_LIMIT ? now + SENSITIVE_COOLDOWN_MS : 0;
+    setSensitiveGuard({
+      ...guard,
+      failedAttempts,
+      lockUntil,
+      lastFailedAt: now
+    });
+    return {
+      locked: lockUntil > now,
+      retryAt: lockUntil || null
+    };
+  }
+
+  async function validateSecurityGate(req, state, session, gateRaw) {
     const gate = readSecurityGate(gateRaw);
     if (!gate) {
       return { ok: false, status: 400, error: "invalid_gate" };
     }
 
-    if (sha256(gate.codeword) !== securityConfig.securityCodewordHash) {
-      return { ok: false, status: 403, error: "invalid_codeword" };
+    const now = Date.now();
+    const guard = getSensitiveGuard(req, session.id);
+    if (guard.lockUntil > now) {
+      return { ok: false, status: 429, error: "locked", retryAt: guard.lockUntil };
+    }
+
+    if (!hashEqualsHex(sha256(gate.codeword), securityConfig.securityCodewordHash)) {
+      const failed = registerSensitiveFailure(req, session.id);
+      return { ok: false, status: failed.locked ? 429 : 403, error: failed.locked ? "locked" : "invalid_codeword", retryAt: failed.retryAt };
     }
 
     const verifiedUser = await verifyCredentials(state, gate.authLogin, gate.authPassword);
     if (!verifiedUser) {
-      return { ok: false, status: 403, error: "invalid_auth" };
+      const failed = registerSensitiveFailure(req, session.id);
+      return { ok: false, status: failed.locked ? 429 : 403, error: failed.locked ? "locked" : "invalid_auth", retryAt: failed.retryAt };
     }
 
     if (verifiedUser.id !== gate.sessionUserId || verifiedUser.role !== ROLE_ADMIN || session.id !== gate.sessionUserId) {
-      return { ok: false, status: 403, error: "forbidden" };
+      const failed = registerSensitiveFailure(req, session.id);
+      return { ok: false, status: failed.locked ? 429 : 403, error: failed.locked ? "locked" : "forbidden", retryAt: failed.retryAt };
     }
 
+    clearSensitiveGuard(req, session.id);
     return { ok: true, gate };
   }
 
@@ -965,7 +1705,7 @@ export function createCmsApiHandler(options = {}) {
         return false;
       }
       if (item.passwordHash) {
-        return verifyPasswordHash(password, item.passwordHash);
+        return verifyPasswordHash(password, item.passwordHash, securityConfig.passwordPepper);
       }
       return item.password === password;
     });
@@ -973,8 +1713,15 @@ export function createCmsApiHandler(options = {}) {
       return null;
     }
 
-    if (!user.passwordHash || !String(user.passwordHash).startsWith("scrypt$")) {
-      const passwordHash = hashPasswordForStorage(password);
+    const currentHash = String(user.passwordHash || "");
+    const shouldRehash =
+      !currentHash ||
+      !currentHash.startsWith("scrypt") ||
+      (Boolean(securityConfig.passwordPepper) && !isScryptPepperedHash(currentHash)) ||
+      user.password;
+
+    if (shouldRehash) {
+      const passwordHash = hashPasswordForStorage(password, securityConfig.passwordPepper);
       state.users = state.users.map((item) =>
         item.id === user.id
           ? {
@@ -1038,6 +1785,78 @@ export function createCmsApiHandler(options = {}) {
           publishedAt: state.publishedAt || null,
           updatedAt: state.updatedAt || null
         });
+        return true;
+      }
+
+      if (pathname === "/api/cms/contact" && method === "POST") {
+        if (!isSameOriginRequest(req)) {
+          sendJson(res, 403, { ok: false, error: "forbidden" });
+          return true;
+        }
+
+        const guard = getContactGuard(req);
+        const now = Date.now();
+        if (guard.lockUntil > now) {
+          sendJson(res, 429, { ok: false, error: "locked", retryAt: guard.lockUntil });
+          return true;
+        }
+
+        const body = await readJsonBody(req, { maxBytes: MAX_CONTACT_PAYLOAD_BYTES });
+        const payload = normalizeContactRequest(body);
+
+        const recentAttempts = guard.attempts.filter((stamp) => now - stamp <= CONTACT_WINDOW_MS);
+        if (recentAttempts.length >= CONTACT_ATTEMPT_LIMIT) {
+          const lockUntil = now + CONTACT_COOLDOWN_MS;
+          setContactGuard({
+            key: guard.key,
+            attempts: recentAttempts,
+            lockUntil
+          });
+          sendJson(res, 429, { ok: false, error: "locked", retryAt: lockUntil });
+          return true;
+        }
+
+        if (payload.honeypot) {
+          setContactGuard({
+            key: guard.key,
+            attempts: [...recentAttempts, now],
+            lockUntil: 0
+          });
+          sendJson(res, 200, { ok: true, ignored: true });
+          return true;
+        }
+
+        const metadata = {
+          id: crypto.randomBytes(12).toString("hex"),
+          ip: extractClientIp(req),
+          userAgent: cleanSingleLine(req.headers["user-agent"] || "", 260),
+          createdAt: nowIso()
+        };
+
+        try {
+          await deliverContactMessage(payload, metadata);
+        } catch (error) {
+          await appendContactLog({
+            id: metadata.id,
+            createdAt: metadata.createdAt,
+            ip: metadata.ip,
+            userAgent: metadata.userAgent,
+            deliveryError: error instanceof Error ? error.message : "delivery_failed",
+            payload
+          });
+
+          if (contactConfig.mode === "smtp") {
+            sendJson(res, 503, { ok: false, error: "service_unavailable" });
+            return true;
+          }
+        }
+
+        setContactGuard({
+          key: guard.key,
+          attempts: [...recentAttempts, now],
+          lockUntil: 0
+        });
+        sendJson(res, 200, { ok: true });
         return true;
       }
 
@@ -1158,6 +1977,100 @@ export function createCmsApiHandler(options = {}) {
         return true;
       }
 
+      if (pathname === "/api/cms/versions" && method === "GET") {
+        const session = await requireSession(req, res);
+        if (!session) {
+          return true;
+        }
+        const versions = await readVersionsIndex();
+        sendJson(res, 200, {
+          ok: true,
+          versions: versions.map(sanitizeVersionForClient).filter(Boolean),
+          limit: versionLimit
+        });
+        return true;
+      }
+
+      if (pathname === "/api/cms/versions/rollback" && method === "POST") {
+        const session = await requireSession(req, res);
+        if (!session) {
+          return true;
+        }
+        if (!canManageUsers(session.role)) {
+          sendJson(res, 403, { ok: false, error: "forbidden" });
+          return true;
+        }
+
+        const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
+        const versionId = body && typeof body === "object" ? body.versionId : null;
+        if (!versionId) {
+          sendJson(res, 400, { ok: false, error: "invalid_version_id" });
+          return true;
+        }
+
+        const loaded = await loadVersionSnapshot(versionId);
+        const state = await readState();
+        // Откат восстанавливает обе ветки: и черновик, и опубликованную версию,
+        // чтобы интерфейс админки и публичный сайт не расходились по данным.
+        state.draft = mergeWithDefaults(DEFAULT_CONTENT, loaded.snapshotState.draft);
+        state.published = mergeWithDefaults(DEFAULT_CONTENT, loaded.snapshotState.published);
+        normalizeAboutDocuments(state.draft);
+        normalizeAboutDocuments(state.published);
+        normalizeHomeMediaSources(state.draft);
+        normalizeHomeMediaSources(state.published);
+        normalizeContactsLegalLinks(state.draft);
+        normalizeContactsLegalLinks(state.published);
+        normalizeModals(state.draft);
+        normalizeModals(state.published);
+        normalizeActionLimits(state.draft);
+        normalizeActionLimits(state.published);
+        state.publishedAt = nowIso();
+        state.updatedAt = nowIso();
+        state.lastPublishedBy = session.id;
+
+        const saved = await queueWrite(state, {
+          snapshot: {
+            trigger: "rollback",
+            actorId: session.id,
+            actorName: session.name,
+            actorLogin: session.login,
+            actorRole: session.role
+          }
+        });
+        const versions = await readVersionsIndex();
+        sendJson(res, 200, {
+          ok: true,
+          state: sanitizeStateForClient(saved),
+          versions: versions.map(sanitizeVersionForClient).filter(Boolean)
+        });
+        return true;
+      }
+
+      if (pathname === "/api/cms/versions/delete" && method === "POST") {
+        const session = await requireSession(req, res);
+        if (!session) {
+          return true;
+        }
+        if (!canManageUsers(session.role)) {
+          sendJson(res, 403, { ok: false, error: "forbidden" });
+          return true;
+        }
+
+        const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
+        const versionId = body && typeof body === "object" ? body.versionId : null;
+        if (!versionId) {
+          sendJson(res, 400, { ok: false, error: "invalid_version_id" });
+          return true;
+        }
+
+        const versions = await deleteVersion(versionId);
+        sendJson(res, 200, {
+          ok: true,
+          versions: versions.map(sanitizeVersionForClient).filter(Boolean)
+        });
+        return true;
+      }
+
       if (pathname === "/api/cms/draft" && method === "POST") {
         const session = await requireSession(req, res);
         if (!session) {
@@ -1182,7 +2095,16 @@ export function createCmsApiHandler(options = {}) {
         normalizeActionLimits(state.draft);
         state.updatedAt = nowIso();
 
-        const saved = await queueWrite(state);
+        // Сохраняем версию на каждый meaningful-save: это точка отката для контент-редактора.
+        const saved = await queueWrite(state, {
+          snapshot: {
+            trigger: "draft",
+            actorId: session.id,
+            actorName: session.name,
+            actorLogin: session.login,
+            actorRole: session.role
+          }
+        });
         sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;
       }
@@ -1207,7 +2129,16 @@ export function createCmsApiHandler(options = {}) {
         state.updatedAt = nowIso();
         state.lastPublishedBy = session.id;
 
-        const saved = await queueWrite(state);
+        // Публикация тоже уходит в историю версий отдельной записью.
+        const saved = await queueWrite(state, {
+          snapshot: {
+            trigger: "publish",
+            actorId: session.id,
+            actorName: session.name,
+            actorLogin: session.login,
+            actorRole: session.role
+          }
+        });
         sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;
       }
@@ -1252,9 +2183,9 @@ export function createCmsApiHandler(options = {}) {
 
         const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
         const state = await readState();
-        const validation = await validateSecurityGate(state, session, body.gate);
+        const validation = await validateSecurityGate(req, state, session, body.gate);
         if (!validation.ok) {
-          sendJson(res, validation.status, { ok: false, error: validation.error });
+          sendJson(res, validation.status, { ok: false, error: validation.error, retryAt: validation.retryAt || null });
           return true;
         }
 
@@ -1277,15 +2208,20 @@ export function createCmsApiHandler(options = {}) {
         const password = String(body.password || "").trim();
         const gate = body.gate;
 
-        if (!userId || password.length < 8 || !gate) {
+        if (!userId || !password || !gate) {
           sendJson(res, 400, { ok: false, error: "invalid_payload" });
+          return true;
+        }
+        const passwordStrength = validatePasswordStrength(password);
+        if (!passwordStrength.ok) {
+          sendJson(res, 400, { ok: false, error: passwordStrength.code });
           return true;
         }
 
         const state = await readState();
-        const validation = await validateSecurityGate(state, session, gate);
+        const validation = await validateSecurityGate(req, state, session, gate);
         if (!validation.ok) {
-          sendJson(res, validation.status, { ok: false, error: validation.error });
+          sendJson(res, validation.status, { ok: false, error: validation.error, retryAt: validation.retryAt || null });
           return true;
         }
 
@@ -1295,7 +2231,7 @@ export function createCmsApiHandler(options = {}) {
           return true;
         }
 
-        const hashed = hashPasswordForStorage(password);
+        const hashed = hashPasswordForStorage(password, securityConfig.passwordPepper);
         state.users = state.users.map((user) =>
           user.id === userId
             ? {
@@ -1394,6 +2330,14 @@ export function createCmsApiHandler(options = {}) {
       const status =
         message === "payload_too_large" || message === "file_too_large"
           ? 413
+          : message === "missing_required_security_env"
+            ? 503
+          : message === "version_not_found"
+            ? 404
+            : message === "version_corrupted"
+              ? 409
+          : message === "service_unavailable"
+            ? 503
           : [
               "invalid_json",
               "missing_file_data",
@@ -1407,7 +2351,14 @@ export function createCmsApiHandler(options = {}) {
               "invalid_draft",
               "invalid_users",
               "invalid_payload",
-              "invalid_gate"
+              "invalid_gate",
+              "invalid_email",
+              "invalid_policy",
+              "invalid_version_id",
+              "invalid_version_file",
+              "password_too_short",
+              "password_missing_letter",
+              "password_missing_digit"
             ].includes(message)
             ? 400
             : 500;

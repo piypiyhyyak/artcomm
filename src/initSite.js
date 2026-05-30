@@ -1955,16 +1955,98 @@ export default function initSite() {
 
   const contactForm = $("#contactForm");
   if (contactForm) {
-    contactForm.addEventListener("submit", function (event) {
+    const submitBtn = $("button[type='submit']", contactForm);
+    const statusNode = $("#contactFormStatus", contactForm);
+    const defaultSubmitLabel = submitBtn ? String(submitBtn.textContent || "Отправить").trim() || "Отправить" : "Отправить";
+
+    function setFormStatus(text, state) {
+      if (!statusNode) {
+        return;
+      }
+      statusNode.textContent = text || "";
+      if (state) {
+        statusNode.setAttribute("data-state", state);
+      } else {
+        statusNode.removeAttribute("data-state");
+      }
+    }
+
+    contactForm.addEventListener("input", function () {
+      if (!statusNode || !statusNode.textContent) {
+        return;
+      }
+      setFormStatus("", "");
+    });
+
+    contactForm.addEventListener("submit", async function (event) {
       event.preventDefault();
-      const submitBtn = $("button[type='submit']", contactForm);
-      submitBtn.textContent = "Отправлено";
+
+      if (!submitBtn || submitBtn.disabled) {
+        return;
+      }
+
+      const formData = new FormData(contactForm);
+      const payload = {
+        name: String(formData.get("name") || ""),
+        contact: String(formData.get("contact") || ""),
+        message: String(formData.get("message") || ""),
+        policyAccepted: Boolean(formData.get("policy")),
+        newsletterAccepted: Boolean(formData.get("newsletter")),
+        website: String(formData.get("website") || "")
+      };
+
       submitBtn.disabled = true;
-      setTimeout(function () {
-        submitBtn.textContent = "Отправить";
-        submitBtn.disabled = false;
+      submitBtn.textContent = "Отправляем...";
+      setFormStatus("Отправляем заявку...", "pending");
+
+      try {
+        const response = await fetch("/api/cms/contact", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          credentials: "same-origin",
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json().catch(function () {
+          return {};
+        });
+
+        if (!response.ok || !result.ok) {
+          const error = String(result.error || "");
+          let message = "Не удалось отправить заявку. Попробуйте ещё раз.";
+          if (response.status === 429) {
+            message = "Слишком много попыток. Повторите отправку позже.";
+          } else if (error === "invalid_policy") {
+            message = "Подтвердите согласие на обработку персональных данных.";
+          } else if (error === "invalid_email") {
+            message = "Проверьте корректность email.";
+          } else if (error === "service_unavailable") {
+            message = "Форма временно недоступна. Напишите нам на info@artcommrf.ru.";
+          } else if (error === "invalid_payload") {
+            message = "Проверьте поля формы и попробуйте снова.";
+          }
+
+          setFormStatus(message, "error");
+          submitBtn.disabled = false;
+          submitBtn.textContent = defaultSubmitLabel;
+          return;
+        }
+
         contactForm.reset();
-      }, 1600);
+        setFormStatus("Заявка отправлена. Мы свяжемся с вами в рабочее время.", "success");
+        submitBtn.textContent = "Отправлено";
+        setTimeout(function () {
+          submitBtn.disabled = false;
+          submitBtn.textContent = defaultSubmitLabel;
+        }, 1300);
+      } catch {
+        setFormStatus("Ошибка сети. Напишите нам на info@artcommrf.ru.", "error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = defaultSubmitLabel;
+      }
     });
   }
 

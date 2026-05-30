@@ -185,10 +185,10 @@ export const DEFAULT_CONTENT = {
       formLead: "Если у вас остались вопросы, оставьте свои контакты и мы свяжемся с вами.",
       policyPrefix: "Я согласен с условиями обработки",
       policyLinkLabel: "персональных данных",
-      policyLink: "/assets/ustav-artkommunikacii.pdf",
+      policyLink: "/privacy",
       newsPrefix: "Я соглашаюсь получать",
       newsLinkLabel: "рекламную рассылку",
-      newsLink: "/assets/ustav-artkommunikacii.pdf",
+      newsLink: "/privacy#marketing-consent",
       submitLabel: "Отправить",
       trustedTitle: "Нам доверяют"
     }

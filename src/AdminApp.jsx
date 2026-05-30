@@ -11,13 +11,16 @@ import {
   canEdit,
   canManageUsers,
   canPublish,
+  deleteVersionRemote,
   clearSession,
+  fetchVersions,
   flushDraftSync,
   getSession,
   loadCmsState,
   makeId,
   publishDraft,
   refreshCmsStateFromServer,
+  rollbackToVersion,
   restoreSessionFromServer,
   saveDraft,
   setUserPassword,
@@ -27,6 +30,7 @@ import {
 
 const NAV_ITEMS = [
   { key: "dashboard", label: "Главная" },
+  { key: "versions", label: "Версионный контроль" },
   { key: "media", label: "Медиа" },
   { key: "docs", label: "Документы" },
   { key: "home", label: "Контент главной" },
@@ -161,6 +165,36 @@ function formatDate(value) {
     return value;
   }
   return dt.toLocaleString("ru-RU");
+}
+
+function formatVersionTrigger(trigger) {
+  const key = String(trigger || "").trim().toLowerCase();
+  if (key === "publish") {
+    return "Публикация";
+  }
+  if (key === "rollback") {
+    return "Откат версии";
+  }
+  return "Сохранение черновика";
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size <= 0) {
+    return "—";
+  }
+  if (size < 1024) {
+    return `${size} Б`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} КБ`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(2)} МБ`;
+}
+
+function isPasswordStrongEnough(value) {
+  const password = String(value || "");
+  return password.length >= 10 && /[a-zа-яё]/i.test(password) && /\d/.test(password);
 }
 
 function countAssetPathOccurrences(node, assetPath) {
@@ -1597,12 +1631,15 @@ export default function AdminApp() {
   const [passwordGateUserId, setPasswordGateUserId] = useState("");
   const [passwordGateBusy, setPasswordGateBusy] = useState(false);
   const [expandedUsers, setExpandedUsers] = useState({});
+  const [versionsState, setVersionsState] = useState({ list: [], limit: null, loadedAt: null, loading: false });
+  const [versionActionBusyId, setVersionActionBusyId] = useState("");
 
   const draft = cmsState.draft;
   const readonly = !session || !canEdit(session.role);
   const editLocked = readonly || isProcessingFiles;
   const canPublishNow = session && canPublish(session.role);
   const canManageUsersNow = session && canManageUsers(session.role);
+  const canManageVersionsNow = canManageUsersNow;
   const isPasswordGateOpen = Boolean(passwordGateUserId);
   const passwordGateTargetUser = isPasswordGateOpen ? cmsState.users.find((user) => user.id === passwordGateUserId) : null;
 
@@ -1689,6 +1726,23 @@ export default function AdminApp() {
   }, [session]);
 
   useEffect(() => {
+    if (!session) {
+      setVersionsState({ list: [], limit: null, loadedAt: null, loading: false });
+      return;
+    }
+    void loadVersionsList(false);
+  }, [session]);
+
+  useEffect(() => {
+    if (tab !== "versions" || !session) {
+      return;
+    }
+    if (!versionsState.loadedAt && !versionsState.loading) {
+      void loadVersionsList(false);
+    }
+  }, [tab, session, versionsState.loadedAt, versionsState.loading]);
+
+  useEffect(() => {
     return () => {
       Object.values(localImagePreviews).forEach((url) => {
         if (typeof url === "string" && url.startsWith("blob:")) {
@@ -1707,6 +1761,37 @@ export default function AdminApp() {
     setCmsState(nextState);
     if (message) {
       setFeedback(message);
+    }
+  }
+
+  async function loadVersionsList(showFeedback = false) {
+    if (!session) {
+      return [];
+    }
+    // Держим явный индикатор загрузки, чтобы не запускать параллельные запросы из нескольких кликов.
+    setVersionsState((prev) => ({ ...prev, loading: true }));
+    try {
+      const result = await fetchVersions();
+      const loadedAt = new Date().toISOString();
+      setVersionsState({
+        list: Array.isArray(result.versions) ? result.versions : [],
+        limit: result.limit ?? null,
+        loadedAt,
+        loading: false
+      });
+      if (showFeedback) {
+        setFeedback("Список версий обновлён");
+      }
+      return Array.isArray(result.versions) ? result.versions : [];
+    } catch (error) {
+      setVersionsState((prev) => ({ ...prev, loading: false }));
+      const code = error instanceof Error ? error.message : "versions_load_failed";
+      if (code === "unauthorized") {
+        setFeedback("Сессия истекла. Войдите снова");
+      } else {
+        setFeedback("Не удалось загрузить список версий");
+      }
+      return [];
     }
   }
 
@@ -1734,6 +1819,8 @@ export default function AdminApp() {
     if (editLocked) {
       return;
     }
+    // Любое изменение в форме сразу считается правкой черновика.
+    // Серверная часть сама заведет snapshot-версию для возможного отката.
     const nextDraft = mutator(cloneDeep(draft));
     const nextState = saveDraft(() => nextDraft);
     syncState(nextState, message);
@@ -1830,8 +1917,8 @@ export default function AdminApp() {
         setFeedback("Пароль и подтверждение не совпадают");
         return;
       }
-      if (nextPassword.length < 8) {
-        setFeedback("Пароль должен содержать минимум 8 символов");
+      if (!isPasswordStrongEnough(nextPassword)) {
+        setFeedback("Пароль должен содержать минимум 10 символов, буквы и цифры");
         return;
       }
     }
@@ -1888,8 +1975,8 @@ export default function AdminApp() {
         setFeedback("Пароль и подтверждение не совпадают");
         return;
       }
-      if (nextPassword.length < 8) {
-        setFeedback("Пароль должен содержать минимум 8 символов");
+      if (!isPasswordStrongEnough(nextPassword)) {
+        setFeedback("Пароль должен содержать минимум 10 символов, буквы и цифры");
         return;
       }
     }
@@ -1943,6 +2030,8 @@ export default function AdminApp() {
         setFeedback("Подтверждение должно быть выполнено под текущей админ-учёткой администратора");
       } else if (code === "locked") {
         setFeedback("Слишком много неудачных попыток подтверждения. Подождите и повторите.");
+      } else if (code === "password_too_short" || code === "password_missing_letter" || code === "password_missing_digit") {
+        setFeedback("Новый пароль не соответствует требованиям: минимум 10 символов, буквы и цифры.");
       } else if (code === "unauthorized") {
         setFeedback("Сессия истекла. Войдите снова");
       } else {
@@ -2053,6 +2142,7 @@ export default function AdminApp() {
       await flushDraftSync();
       const next = await publishDraft(session.id);
       syncState(next, "Изменения опубликованы");
+      void loadVersionsList(false);
     } catch {
       setFeedback("Не удалось опубликовать изменения на сервере");
     }
@@ -2072,6 +2162,85 @@ export default function AdminApp() {
     const local = loadCmsState();
     setCmsState(local);
     setFeedback("Черновик перечитан из локального кеша");
+  }
+
+  async function handleRollbackVersion(versionId) {
+    if (!canManageVersionsNow) {
+      setFeedback("Только администратор может откатывать версии");
+      return;
+    }
+    const safeId = String(versionId || "").trim();
+    if (!safeId) {
+      return;
+    }
+    const approved = window.confirm("Откатить сайт на выбранную версию? Текущий черновик и публикация будут заменены.");
+    if (!approved) {
+      return;
+    }
+    setVersionActionBusyId(safeId);
+    try {
+      // После отката сервер возвращает уже восстановленный state — сразу подменяем его в UI.
+      const result = await rollbackToVersion(safeId);
+      if (result.state) {
+        setCmsState(result.state);
+      }
+      setVersionsState((prev) => ({
+        ...prev,
+        list: Array.isArray(result.versions) ? result.versions : prev.list,
+        loadedAt: new Date().toISOString(),
+        loading: false
+      }));
+      setFeedback("Версия успешно восстановлена");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "rollback_failed";
+      if (code === "version_not_found") {
+        setFeedback("Версия не найдена. Обновите список.");
+      } else if (code === "forbidden") {
+        setFeedback("Откат доступен только администратору");
+      } else {
+        setFeedback("Не удалось выполнить откат версии");
+      }
+    } finally {
+      setVersionActionBusyId("");
+    }
+  }
+
+  async function handleDeleteVersion(versionId) {
+    if (!canManageVersionsNow) {
+      setFeedback("Только администратор может удалять версии");
+      return;
+    }
+    const safeId = String(versionId || "").trim();
+    if (!safeId) {
+      return;
+    }
+    const approved = window.confirm("Удалить выбранную версию безвозвратно?");
+    if (!approved) {
+      return;
+    }
+    setVersionActionBusyId(safeId);
+    try {
+      // Удаляем только архив версии. Текущий черновик/публикация не трогаются.
+      const result = await deleteVersionRemote(safeId);
+      setVersionsState((prev) => ({
+        ...prev,
+        list: Array.isArray(result.versions) ? result.versions : prev.list,
+        loadedAt: new Date().toISOString(),
+        loading: false
+      }));
+      setFeedback("Версия удалена");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "version_delete_failed";
+      if (code === "version_not_found") {
+        setFeedback("Версия уже удалена. Обновите список.");
+      } else if (code === "forbidden") {
+        setFeedback("Удаление доступно только администратору");
+      } else {
+        setFeedback("Не удалось удалить версию");
+      }
+    } finally {
+      setVersionActionBusyId("");
+    }
   }
 
   if (!session) {
@@ -2183,6 +2352,91 @@ export default function AdminApp() {
                   </ol>
                 </article>
               </div>
+            </Panel>
+          ) : null}
+
+          {tab === "versions" ? (
+            <Panel
+              title="Версионный контроль"
+              subtitle="Резервные копии создаются автоматически после сохранения черновика, публикации и отката."
+            >
+              <div className="ap-version-toolbar">
+                <button
+                  type="button"
+                  className="ap-btn ap-btn-ghost"
+                  disabled={versionsState.loading || Boolean(versionActionBusyId)}
+                  onClick={() => {
+                    void loadVersionsList(true);
+                  }}
+                >
+                  {versionsState.loading ? "Обновляем..." : "Обновить список версий"}
+                </button>
+                <p className="ap-subtitle">
+                  Последнее обновление: {versionsState.loadedAt ? formatDate(versionsState.loadedAt) : "—"}
+                  {versionsState.limit ? ` · Лимит хранения: ${versionsState.limit}` : ""}
+                </p>
+              </div>
+
+              {!canManageVersionsNow ? (
+                <p className="ap-feedback ap-feedback-muted">
+                  Просмотр версий доступен всем ролям, но откат и удаление разрешены только администратору.
+                </p>
+              ) : null}
+
+              {versionsState.list.length ? (
+                <div className="ap-list">
+                  {versionsState.list.map((version, index) => {
+                    const isBusy = versionActionBusyId === version.id;
+                    const actorName = version.actorName || version.actorLogin || version.actorId || "Система";
+                    return (
+                      <article key={version.id} className="ap-item ap-item-version">
+                        <div className="ap-item-head">
+                          <span className="ap-item-index">{index + 1}</span>
+                          <strong>{formatVersionTrigger(version.trigger)}</strong>
+                        </div>
+                        <div className="ap-item-body ap-item-doc">
+                          <div className="ap-item-fields">
+                            <div className="ap-grid ap-grid-4">
+                              <Field label="ID версии" value={version.id} disabled />
+                              <Field label="Дата создания" value={formatDate(version.createdAt)} disabled />
+                              <Field label="Автор" value={actorName} disabled />
+                              <Field label="Размер снапшота" value={formatFileSize(version.sizeBytes)} disabled />
+                            </div>
+                            <div className="ap-grid ap-grid-2">
+                              <Field label="Черновик на момент версии" value={formatDate(version.sourceUpdatedAt)} disabled />
+                              <Field label="Публикация на момент версии" value={formatDate(version.sourcePublishedAt)} disabled />
+                            </div>
+                            <div className="ap-item-actions">
+                              <button
+                                type="button"
+                                className="ap-btn ap-btn-primary"
+                                disabled={!canManageVersionsNow || Boolean(versionActionBusyId)}
+                                onClick={() => {
+                                  void handleRollbackVersion(version.id);
+                                }}
+                              >
+                                {isBusy ? "Выполняется..." : "Откатить эту версию"}
+                              </button>
+                              <button
+                                type="button"
+                                className="ap-btn ap-btn-danger"
+                                disabled={!canManageVersionsNow || Boolean(versionActionBusyId)}
+                                onClick={() => {
+                                  void handleDeleteVersion(version.id);
+                                }}
+                              >
+                                Удалить версию
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="ap-subtitle">Пока нет сохранённых версий. Первая версия появится после сохранения черновика.</p>
+              )}
             </Panel>
           ) : null}
 
