@@ -1622,6 +1622,8 @@ export default function AdminApp() {
   const [tab, setTab] = useState("dashboard");
   const [feedback, setFeedback] = useState("");
   const [authForm, setAuthForm] = useState({ login: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const [authErrorHighlighted, setAuthErrorHighlighted] = useState(false);
   const [localImagePreviews, setLocalImagePreviews] = useState({});
   const [localVideoPreviews, setLocalVideoPreviews] = useState({});
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
@@ -2109,22 +2111,36 @@ export default function AdminApp() {
 
   async function handleLogin(event) {
     event.preventDefault();
-    const result = await authenticate(authForm.login.trim(), authForm.password);
+    const login = authForm.login.trim();
+    const password = authForm.password;
+
+    if (!login || !password) {
+      setAuthError("Введите логин и пароль.");
+      setAuthErrorHighlighted(true);
+      return;
+    }
+
+    const result = await authenticate(login, password);
     if (!result.session) {
       if (result.error === "locked" && result.retryAt) {
-        setFeedback(`Слишком много попыток. Повторите после ${formatDate(result.retryAt)}.`);
+        setAuthError(`Слишком много попыток. Повторите после ${formatDate(result.retryAt)}.`);
+        setAuthErrorHighlighted(true);
         return;
       }
       if (result.error === "unavailable") {
-        setFeedback("Сервер CMS недоступен. Проверьте API и повторите вход.");
+        setAuthError("Сервер CMS недоступен. Проверьте API и повторите вход.");
+        setAuthErrorHighlighted(false);
         return;
       }
-      setFeedback("Неверный логин или пароль");
+      setAuthError("Неверный логин или пароль.");
+      setAuthErrorHighlighted(true);
       return;
     }
 
     setSession(result.session);
     setAuthForm({ login: "", password: "" });
+    setAuthError("");
+    setAuthErrorHighlighted(false);
     setFeedback(`Вход выполнен: ${ROLE_LABELS[result.session.role]}.`);
   }
 
@@ -2256,26 +2272,39 @@ export default function AdminApp() {
           </div>
           <header className="ap-login-head">
             <h1>Вход в админ-панель</h1>
-            <p>Используйте логин и пароль администратора.</p>
           </header>
-          <form onSubmit={handleLogin} className="ap-login-form">
+          <form onSubmit={handleLogin} className={`ap-login-form${authErrorHighlighted ? " is-error" : ""}`}>
             <Field
               label="Логин"
               value={authForm.login}
               autoComplete="username"
               autoFocus
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, login: event.target.value }))}
+              onChange={(event) => {
+                setAuthForm((prev) => ({ ...prev, login: event.target.value }));
+                if (authError) {
+                  setAuthError("");
+                  setAuthErrorHighlighted(false);
+                }
+              }}
             />
             <Field
               label="Пароль"
               type="password"
               value={authForm.password}
               autoComplete="current-password"
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, password: event.target.value }))}
+              onChange={(event) => {
+                setAuthForm((prev) => ({ ...prev, password: event.target.value }));
+                if (authError) {
+                  setAuthError("");
+                  setAuthErrorHighlighted(false);
+                }
+              }}
             />
             <button type="submit" className="ap-btn ap-btn-primary">Войти</button>
+            {authError ? (
+              <p className={`ap-auth-error${authErrorHighlighted ? " is-critical" : ""}`}>{authError}</p>
+            ) : null}
           </form>
-          {feedback ? <p className="ap-feedback">{feedback}</p> : null}
         </section>
       </main>
     );

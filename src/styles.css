@@ -3382,7 +3382,13 @@ h3 {
 .modal h3 {
   margin: 0 0 14px;
   font-family: "Playfair Display", serif;
-  font-size: 36px;
+  font-size: clamp(30px, 4vw, 36px);
+  line-height: 1.06;
+  text-wrap: balance;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+  padding-right: 52px;
 }
 
 .modal p,
@@ -6462,10 +6468,35 @@ h3 {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
 }
 
+.ap-login-form.is-error .ap-field span {
+  color: #9f1f1f;
+}
+
+.ap-login-form.is-error .ap-field input {
+  border-color: #d63434;
+  background: #fff7f7;
+  color: #811616;
+}
+
+.ap-login-form.is-error .ap-field input:focus {
+  border-color: #d63434;
+  box-shadow: 0 0 0 3px rgba(214, 52, 52, 0.2);
+}
+
 .ap-login-form .ap-btn {
   border-radius: 12px;
   min-height: 46px;
   font-size: 20px;
+}
+
+.ap-auth-error {
+  margin: 2px 0 0;
+  color: #4f6788;
+  font: 700 14px/1.3 "Manrope", sans-serif;
+}
+
+.ap-auth-error.is-critical {
+  color: #b31a1a;
 }
 
 .ap-login-card .ap-feedback {
