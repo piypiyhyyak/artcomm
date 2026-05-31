@@ -42,7 +42,6 @@ const CONTACT_COOLDOWN_MS = 1000 * 60 * 15;
 const CONTACT_NAME_MAX = 120;
 const CONTACT_EMAIL_MAX = 190;
 const CONTACT_MESSAGE_MAX = 3000;
-const CONTACT_MESSAGE_MIN = 5;
 const MIN_PASSWORD_LENGTH = 10;
 const SENSITIVE_ATTEMPT_LIMIT = 5;
 const SENSITIVE_COOLDOWN_MS = 1000 * 60 * 10;
@@ -1502,9 +1501,6 @@ export function createCmsApiHandler(options = {}) {
     const honeypot = cleanSingleLine(body.website, 180);
 
     if (!name || !email || !message) {
-      throw new Error("invalid_payload");
-    }
-    if (message.length < CONTACT_MESSAGE_MIN) {
       throw new Error("invalid_payload");
     }
     if (!isValidEmail(email)) {
