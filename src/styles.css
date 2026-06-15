@@ -3219,10 +3219,6 @@ h3 {
   padding: clamp(30px, 4vw, 44px) 0 clamp(22px, 3.2vw, 30px);
 }
 
-#siteFooter {
-  padding-bottom: clamp(340px, 35vh, 420px);
-}
-
 .site-footer::before {
   display: none;
 }
