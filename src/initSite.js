@@ -1,5 +1,6 @@
 import diamondChartSvg from "./assets/chart.svg?raw";
 import { mountProblemTest } from "./testEngine";
+import { buildFastVideoSource, isSafariLikeBrowser } from "./videoSources";
 
 export default function initSite() {
   if (window.__artcommSiteInitialized) {
@@ -317,9 +318,10 @@ export default function initSite() {
   const videoMode = queryParams ? queryParams.get("video") : null;
   const forceFastVideo = videoMode === "fast";
   const forceFullVideo = videoMode === "full";
-  const shouldPreferLocalFastVideo =
+  const isSafariBrowser = isSafariLikeBrowser();
+  const shouldPreferFastVideo =
     forceFastVideo ||
-    (!forceFullVideo && (savesData || isSlowNetwork || (isLocalHost && isTouchLikeDevice)));
+    (!forceFullVideo && (isSafariBrowser || savesData || isSlowNetwork || (isLocalHost && isTouchLikeDevice)));
   const isLiteMode = savesData || isSlowNetwork || isTouchLikeDevice;
   const allowAutoVideoPlayback = !(savesData || isSlowNetwork);
   const loadedHeroSlideIndexes = new Set();
@@ -686,7 +688,11 @@ export default function initSite() {
     if (source && !source.getAttribute("src") && source.dataset.src) {
       const localSrc = source.dataset.localSrc || "";
       const defaultSrc = source.dataset.src || "";
-      const preferredSrc = shouldPreferLocalFastVideo && localSrc ? localSrc : defaultSrc;
+      const fastSrc = buildFastVideoSource(defaultSrc);
+      const preferredSrc =
+        shouldPreferFastVideo && (fastSrc || localSrc)
+          ? fastSrc || localSrc
+          : defaultSrc;
       if (preferredSrc) {
         source.setAttribute("src", preferredSrc);
         changed = true;
@@ -696,7 +702,11 @@ export default function initSite() {
     if (!source && !video.getAttribute("src") && video.dataset.src) {
       const localSrc = video.dataset.localSrc || "";
       const defaultSrc = video.dataset.src || "";
-      const preferredSrc = shouldPreferLocalFastVideo && localSrc ? localSrc : defaultSrc;
+      const fastSrc = buildFastVideoSource(defaultSrc);
+      const preferredSrc =
+        shouldPreferFastVideo && (fastSrc || localSrc)
+          ? fastSrc || localSrc
+          : defaultSrc;
       if (preferredSrc) {
         video.setAttribute("src", preferredSrc);
         changed = true;

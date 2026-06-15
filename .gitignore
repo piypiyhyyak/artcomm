@@ -22,3 +22,4 @@ cms-data/
 
 # Large videos should stay outside git
 *.mp4
+!public/assets/gimn-ed-zy9mar-fast.mp4

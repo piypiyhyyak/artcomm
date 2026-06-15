@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { fetchPublishedContentFromServer, getPublishedContent } from "./cms/storage";
 import { sanitizeHtmlFragment, sanitizeSrc } from "./cms/security";
+import { buildFastVideoSource, isSafariLikeBrowser } from "./videoSources";
 
 function getFallbackContent() {
   try {
@@ -111,9 +112,10 @@ export default function ProjectsApp() {
     return [...baseStats, ...extraStats];
   }, [mediaStation.stats, projects?.flagship?.extraStats]);
 
-  const videoSource =
+  const baseVideoSource =
     sanitizeSrc(projects.flagship?.videoSrc || mediaStation.videoDesktop || mediaStation.videoMobile || mediaStation.videoFallback || "") ||
     "/assets/gimn-ed-zy9mar.mp4";
+  const videoSource = isSafariLikeBrowser() ? buildFastVideoSource(baseVideoSource) || baseVideoSource : baseVideoSource;
 
   const toggleSound = async () => {
     const video = videoRef.current;
