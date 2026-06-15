@@ -321,7 +321,7 @@ export default function initSite() {
     forceFastVideo ||
     (!forceFullVideo && (savesData || isSlowNetwork || (isLocalHost && isTouchLikeDevice)));
   const isLiteMode = savesData || isSlowNetwork || isTouchLikeDevice;
-  const allowAutoVideoPlayback = !(savesData || isSlowNetwork || isTouchLikeDevice);
+  const allowAutoVideoPlayback = !(savesData || isSlowNetwork);
   const loadedHeroSlideIndexes = new Set();
   let queuedHeroWarmup = false;
 
