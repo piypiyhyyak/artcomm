@@ -1,0 +1,8 @@
+<svg width="640" height="640" viewBox="0 0 640 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="640" rx="36" fill="#12395E"/>
+  <circle cx="320" cy="244" r="112" fill="#2C5D93"/>
+  <path d="M168 560C193 448 246 392 320 392C394 392 447 448 472 560" fill="#2C5D93"/>
+  <circle cx="320" cy="232" r="84" fill="#F4F7FC"/>
+  <path d="M248 330C267 297 291 280 320 280C349 280 373 297 392 330V378H248V330Z" fill="#F4F7FC"/>
+  <text x="320" y="548" fill="#F4F7FC" font-family="Manrope, Arial, sans-serif" font-size="38" font-weight="700" text-anchor="middle">Елена Светлова</text>
+</svg>

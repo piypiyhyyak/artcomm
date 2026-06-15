@@ -173,19 +173,48 @@ function applyActionButton(node, source, fallbackScroll = "#contacts", fallbackM
     return;
   }
 
+  const rawTarget = typeof source.target === "string" ? source.target.trim() : "";
+  const isLegacyFormatsLink = source.type === "link" && (rawTarget === "/formats" || rawTarget === "/formats/");
+  const isLegacyMethodologyLink =
+    source.type === "link" &&
+    (rawTarget === "/formats#methodology" ||
+      rawTarget === "/formats/#methodology" ||
+      rawTarget === "/?page=formats#methodology");
+
   node.textContent = source.label || node.textContent;
   node.classList.toggle("btn-primary", source.variant === "primary");
   node.classList.toggle("btn-secondary", source.variant !== "primary");
 
   node.removeAttribute("data-modal");
   node.removeAttribute("data-scroll");
+  node.removeAttribute("data-link");
+  if (node.tagName.toLowerCase() === "a") {
+    node.removeAttribute("href");
+  }
 
-  if (source.type === "modal") {
+  if (source.type === "modal" || isLegacyFormatsLink || isLegacyMethodologyLink) {
     const modalTarget =
-      typeof source.target === "string" && /^[a-z0-9-]{1,48}$/i.test(source.target)
-        ? source.target
+      source.type === "modal" && /^[a-z0-9-]{1,48}$/i.test(rawTarget)
+        ? rawTarget
+        : isLegacyMethodologyLink
+          ? "methodology"
+          : isLegacyFormatsLink
+            ? "formats"
         : fallbackModal;
     node.setAttribute("data-modal", modalTarget);
+    if (node.tagName.toLowerCase() === "a") {
+      node.setAttribute("href", `/?modal=${modalTarget}`);
+    }
+    return;
+  }
+
+  if (source.type === "link") {
+    const safeHref = sanitizeHref(source.target || "");
+    const safeLink = safeHref || fallbackScroll;
+    node.setAttribute("data-link", safeLink);
+    if (node.tagName.toLowerCase() === "a") {
+      node.setAttribute("href", safeLink);
+    }
     return;
   }
 
@@ -356,10 +385,6 @@ function renderIksPillars(root, pillars) {
     li.setAttribute("tabindex", "0");
     li.dataset.key = item.key || item.title || "Параметр";
 
-    const icon = documentRef.createElement("span");
-    icon.className = "iks-pill-icon";
-    icon.setAttribute("aria-hidden", "true");
-
     const wrap = documentRef.createElement("div");
     const title = documentRef.createElement("strong");
     const text = documentRef.createElement("p");
@@ -368,7 +393,6 @@ function renderIksPillars(root, pillars) {
     wrap.appendChild(title);
     wrap.appendChild(text);
 
-    li.appendChild(icon);
     li.appendChild(wrap);
     container.appendChild(li);
   });
@@ -506,12 +530,13 @@ function applyHomeContent(root, content) {
 
       const commonButtons = Array.from(root.querySelectorAll("#common .common-redo-cta .stack-actions .btn"));
       if (commonButtons.length >= 1) {
+        const primaryTarget = String(home.common.cta.primaryTarget || "").trim();
         applyActionButton(
           commonButtons[0],
           {
             label: home.common.cta.primaryLabel,
-            type: "scroll",
-            target: home.common.cta.primaryTarget,
+            type: primaryTarget && !primaryTarget.startsWith("#") ? "link" : "scroll",
+            target: primaryTarget,
             variant: "primary"
           },
           "#ms"
@@ -577,7 +602,7 @@ function applyHomeContent(root, content) {
     renderMetricStats(root, home.mediaStation.stats || []);
     renderLoyaltyRings(root, home.mediaStation.loyalty || []);
     applyActionButtons(root, "#ms .ms-tail-actions .btn", home.mediaStation.actions || [], {
-      fallbackModal: "ms-results",
+      fallbackModal: "ms-participants",
       fallbackScroll: "#ms"
     });
   }
@@ -617,6 +642,7 @@ function applyHomeContent(root, content) {
     setTextContent(root, "#contacts .contact-form h3", home.contactsSection.formTitle);
     setTextContent(root, "#contacts .contact-form .contact-form-lead", home.contactsSection.formLead);
     setTextContent(root, "#contacts .trusted-network-card h3", home.contactsSection.trustedTitle);
+    setTextContent(root, "#contacts .trusted-network-card .trusted-network-sub", home.contactsSection.trustedSubtitle);
 
     setContactCheckText(
       root,

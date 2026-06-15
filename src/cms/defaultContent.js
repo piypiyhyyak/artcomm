@@ -40,16 +40,8 @@ export const DEFAULT_CONTENT = {
       kicker: "Институт «АртКомм»",
       title: "Повышаем управляемость команд через коммуникации",
       quote: "«Проблема не в людях, а в связях между ними»",
-      actions: [
-        { id: "hero-action-1", label: "Пройти тест", type: "scroll", target: "#commin", variant: "primary", isPublished: true },
-        { id: "hero-action-2", label: "О проектах", type: "scroll", target: "#ms", variant: "secondary", isPublished: true },
-        { id: "hero-action-3", label: "Обсудить сессию", type: "scroll", target: "#contacts", variant: "secondary", isPublished: true }
-      ],
-      trustLine: [
-        { id: "trust-1", value: "20+ лет", caption: "практики", isPublished: true },
-        { id: "trust-2", value: "40+ городов", caption: "в проектах", isPublished: true },
-        { id: "trust-3", value: "1000+ участников", caption: "управленческих команд", isPublished: true }
-      ]
+      actions: [],
+      trustLine: []
     },
     slides: [
       { id: "slide-1", image: "/assets/hero-5.jpeg", alt: "Фоновое фото института", isPublished: true },
@@ -72,11 +64,11 @@ export const DEFAULT_CONTENT = {
       metricSuffix: "%",
       metricCaption: "готовы назвать себя амбассадорами Росатома",
       stats: [
-        { id: "ms-stat-1", value: "996", suffix: "", label: "участников", isPublished: true },
+        { id: "ms-stat-1", value: "969", suffix: "", label: "участников", isPublished: true },
         { id: "ms-stat-2", value: "30", suffix: "", label: "городов", isPublished: true },
         { id: "ms-stat-3", value: "11", suffix: "", label: "часовых поясов", isPublished: true },
         { id: "ms-stat-4", value: "20", suffix: " млн", label: "просмотров", isPublished: true },
-        { id: "ms-stat-5", value: "5200", suffix: "", label: "медиапродуктов", isPublished: true },
+        { id: "ms-stat-5", value: "5 200", suffix: "", label: "медиапродуктов", isPublished: true },
         { id: "ms-stat-6", value: "76,9", suffix: "%", label: "вовлечённости", isPublished: true }
       ],
       loyalty: [
@@ -88,9 +80,7 @@ export const DEFAULT_CONTENT = {
         { id: "ms-loyalty-6", value: "96", label: "Ощущаем себя как команда", isPublished: true }
       ],
       actions: [
-        { id: "ms-action-1", label: "Результаты проекта", type: "modal", target: "ms-results", variant: "primary", isPublished: true },
-        { id: "ms-action-2", label: "Отзывы участников", type: "modal", target: "ms-participants", variant: "secondary", isPublished: true },
-        { id: "ms-action-3", label: "Комментарий замминистра", type: "modal", target: "ms-minister", variant: "secondary", isPublished: true }
+        { id: "ms-action-1", label: "Отзывы о МедиаСтанции", type: "modal", target: "ms-participants", variant: "primary", isPublished: true }
       ]
     },
     contacts: {
@@ -140,19 +130,18 @@ export const DEFAULT_CONTENT = {
       title: "Индекс коммуникационной состоятельности",
       description: "Переводим коммуникации из «ощущений» в управляемую систему, чтобы команда видела сильные стороны и точки ускорения решений.",
       pillars: [
-        { id: "pillar-1", key: "Организация", title: "Организация", text: "Насколько чётко распределены процессы, ответственность и ритм решений.", isPublished: true },
-        { id: "pillar-2", key: "Компетенции", title: "Компетенции", text: "Готовность ролей к диалогу, фасилитации и управлению сложными стыками.", isPublished: true },
-        { id: "pillar-3", key: "Контент", title: "Контент", text: "Качество смыслов и единый язык, который доходит до исполнения.", isPublished: true },
-        { id: "pillar-4", key: "Охват", title: "Охват", text: "Плотность каналов и глубина включения команды в общий контур коммуникаций.", isPublished: true }
+        { id: "pillar-1", key: "Организация и процессы", title: "Организация и процессы", text: "Насколько чётко распределены процессы, ответственность и ритм решений.", isPublished: true },
+        { id: "pillar-2", key: "Компетенции и роли", title: "Компетенции и роли", text: "Готовность ролей к диалогу, фасилитации и управлению сложными стыками.", isPublished: true },
+        { id: "pillar-3", key: "Контент и производство", title: "Контент и производство", text: "Качество смыслов и единый язык, который доходит до исполнения.", isPublished: true },
+        { id: "pillar-4", key: "Охват и каналы", title: "Охват и каналы", text: "Плотность каналов и глубина включения команды в общий контур коммуникаций.", isPublished: true }
       ],
       actions: [
-        { id: "iks-action-1", label: "Что такое алмаз", type: "modal", target: "diamond", variant: "primary", isPublished: true },
-        { id: "iks-action-2", label: "Суверенитет РФ", type: "modal", target: "sovereignty", variant: "secondary", isPublished: true },
-        { id: "iks-action-3", label: "Форматы работы", type: "modal", target: "formats", variant: "secondary", isPublished: true }
+        { id: "iks-action-1", label: "Форматы работы", type: "modal", target: "formats", variant: "primary", isPublished: true },
+        { id: "iks-action-2", label: "Узнать методологию", type: "modal", target: "methodology", variant: "secondary", isPublished: true }
       ]
     },
     expert: {
-      kicker: "Кто ведёт сессию",
+      kicker: "Наши эксперты",
       title: "Роман Скудняков",
       quote: "«Управляемость команды начинается с того, как она разговаривает и как принимает решения».",
       brief: "Стратегический коммуникатор и модератор управленческих команд в сложных распределённых структурах.",
@@ -172,8 +161,7 @@ export const DEFAULT_CONTENT = {
       impactSecondaryText: "1000+ проектов",
       actions: [
         { id: "expert-action-1", label: "Команда Арткомм", type: "modal", target: "team", variant: "primary", isPublished: true },
-        { id: "expert-action-2", label: "Профессиональные награды", type: "modal", target: "awards", variant: "secondary", isPublished: true },
-        { id: "expert-action-3", label: "Факты и достижения", type: "modal", target: "achievements", variant: "secondary", isPublished: true }
+        { id: "expert-action-2", label: "Профессиональные награды", type: "modal", target: "awards", variant: "secondary", isPublished: true }
       ]
     },
     contactsSection: {
@@ -190,42 +178,102 @@ export const DEFAULT_CONTENT = {
       newsLinkLabel: "рекламную рассылку",
       newsLink: "/privacy#marketing-consent",
       submitLabel: "Отправить",
-      trustedTitle: "Нам доверяют"
+      trustedTitle: "Нам доверяют",
+      trustedSubtitle: "Работаем более чем в 40 городах — от распределённых команд до отраслевых управленческих контуров."
     }
+  },
+  projects: {
+    heroKicker: "Наши проекты",
+    heroTitle: "Наши проекты",
+    heroLead:
+      "Полный перечень проектов института: от флагманской МедиаСтанции до стратегических и форсайт-сессий для больших распределённых команд.",
+    listingButtonLabel: "Другие проекты",
+    flagship: {
+      kicker: "Флагманский проект",
+      title: "МедиаСтанция",
+      lead: "Коммуникационный формат для больших распределённых команд и управленческих контуров.",
+      aboutTitle: "О проекте",
+      aboutText:
+        "МедиаСтанция помогает ускорять рабочие договорённости внутри больших распределённых команд: мы собираем единый коммуникационный ритм для людей из разных городов, уровней управления и функциональных контуров.",
+      videoSrc: "/assets/gimn-ed-zy9mar.mp4",
+      videoCaption: "",
+      soundLabel: "Включить звук",
+      mutedLabel: "Выключить звук",
+      reviewsLabel: "Отзывы о МедиаСтанции",
+      extraStats: [
+        { id: "project-ms-stat-7", value: "75,5", suffix: "%", label: "NPS" }
+      ]
+    },
+    listingKicker: "Полный перечень",
+    listingTitle: "Другие проекты",
+    otherProjects: [
+      {
+        id: "project-1",
+        title: "Корпорация развития Дальнего Востока",
+        subtitle: "Стратегическая сессия Rapid Foresight"
+      },
+      {
+        id: "project-2",
+        title: "Лидеры России",
+        subtitle: "Мастерские на Сенеже (40 городов)"
+      },
+      {
+        id: "project-3",
+        title: "Международный форум «Форсаж»",
+        subtitle: "Стендап «Семейные ценности»"
+      },
+      {
+        id: "project-4",
+        title: "Росатом",
+        subtitle: "Модерация управсовета «Люди и города»"
+      }
+    ]
   },
   modals: [
     {
-      id: "test",
-      title: "Тест на проблематику",
-      bodyHtml: "",
-      isPublished: true
-    },
-    {
-      id: "ms-results",
-      title: "Результаты МедиаСтанции",
-      bodyHtml:
-        '<div class="modal-grid numbers-12"><span>996 участников</span><span>30 городов</span><span>11 часовых поясов</span><span>20 млн просмотров</span><span>5200 медиапродуктов</span><span>76,9% вовлечённости</span><span>82% амбассадоры</span><span>86% уверенность</span><span>92% рост связей</span><span>93% быстрее договорённости</span><span>95% проще решать</span><span>96% командность</span></div><div class="bars modal-bars"><div class="bar-item"><span>Лояльность</span><strong>86%</strong><div class="bar"><i data-value="86"></i></div></div><div class="bar-item"><span>Инициативность</span><strong>90%</strong><div class="bar"><i data-value="90"></i></div></div><div class="bar-item"><span>Синхронность</span><strong>96%</strong><div class="bar"><i data-value="96"></i></div></div></div>',
-      isPublished: true
-    },
-    {
       id: "ms-participants",
-      title: "Участники о проекте",
-      bodyHtml:
-        "<blockquote>«Я увидела, как командные договорённости становятся реальными действиями уже в первые недели.» — Елена Светлова, Озёрск</blockquote><blockquote>«Проект дал нам язык, на котором можно обсуждать сложные задачи без конфликтов.» — Ульяна Реброва, Полярные Зори</blockquote>",
-      isPublished: true
-    },
-    {
-      id: "ms-minister",
-      title: "Комментарий замминистра науки РФ",
-      bodyHtml:
-        "<p>«Формат МедиаСтанции показал, что работа с коммуникациями напрямую влияет на скорость реализации решений и качество командного взаимодействия.»</p><p class='modal-note'>Ольга Петрова, заместитель министра науки РФ</p>",
+      title: "Отзывы о МедиаСтанции",
+      bodyHtml: String.raw`
+        <div class="modal-review-list">
+          <article class="modal-review-card">
+            <div class="modal-review-media">
+              <div class="modal-review-avatar-empty" aria-hidden="true">ОП</div>
+            </div>
+            <div class="modal-review-copy">
+              <h4>Ольга Петрова</h4>
+              <p class="modal-review-meta">Заместитель министра науки РФ</p>
+              <p class="modal-review-text">«Формат МедиаСтанции показал, что работа с коммуникациями напрямую влияет на скорость реализации решений и качество командного взаимодействия.»</p>
+            </div>
+          </article>
+          <article class="modal-review-card">
+            <div class="modal-review-media">
+              <div class="modal-review-avatar-empty" aria-hidden="true">ЕС</div>
+            </div>
+            <div class="modal-review-copy">
+              <h4>Елена Светлова</h4>
+              <p class="modal-review-meta">Озёрск</p>
+              <p class="modal-review-text">«Я увидела, как командные договорённости становятся реальными действиями уже в первые недели.»</p>
+            </div>
+          </article>
+          <article class="modal-review-card">
+            <div class="modal-review-media">
+              <div class="modal-review-avatar-empty" aria-hidden="true">УР</div>
+            </div>
+            <div class="modal-review-copy">
+              <h4>Ульяна Реброва</h4>
+              <p class="modal-review-meta">Полярные Зори</p>
+              <p class="modal-review-text">«Проект дал нам язык, на котором можно обсуждать сложные задачи без конфликтов.»</p>
+            </div>
+          </article>
+        </div>
+      `,
       isPublished: true
     },
     {
       id: "diamond",
       title: "Коммуникационный алмаз",
       bodyHtml:
-        "<p>Алмаз показывает состояние системы по четырём осям: организация, компетенции, контент и охват. ИКС рассчитывается как суммарная оценка показателей: <strong>ИКС = ∑P[j]</strong>.</p><p>Сравнение линии города со средним значением позволяет увидеть сильные стороны и зоны развития.</p>",
+        "<p>Алмаз показывает состояние системы по четырём осям: организация и процессы, компетенции и роли, контент и производство, охват и каналы. ИКС рассчитывается как суммарная оценка показателей: <strong>ИКС = ∑P[j]</strong>.</p><p>Сравнение линии города со средним значением позволяет увидеть сильные стороны и зоны развития.</p>",
       isPublished: true
     },
     {
@@ -237,30 +285,159 @@ export const DEFAULT_CONTENT = {
     },
     {
       id: "formats",
-      title: "Форматы работы",
-      bodyHtml:
-        '<div class="modal-grid format-cards"><article><h4>Управленческая сессия</h4><p>2–4 часа</p><p class="tags">#диагностика #синхронизация #решения</p></article><article><h4>Форсайт-сессия</h4><p>1–2 дня</p><p class="tags">#сценарии #стратегия #приоритеты</p></article><article><h4>Акселерация</h4><p>1–12 месяцев</p><p class="tags">#внедрение #сопровождение #ростИКС</p></article></div>',
+      title: "Три формата — под любую задачу",
+      bodyHtml: String.raw`
+        <p class="formats-modal-lead">Выбирайте глубину погружения: от одной сессии до системной трансформации на год</p>
+        <div class="modal-grid format-showcase">
+          <article class="format-showcase-card">
+            <div class="format-showcase-top">
+              <span class="format-showcase-index">01</span>
+              <span class="format-showcase-duration">2–4 часа</span>
+            </div>
+            <div class="format-showcase-body">
+              <h4>Управленческая сессия</h4>
+              <p class="format-showcase-text">Практическая сессия для команды или руководителя. Работаем с конкретными задачами прямо в зале.</p>
+              <div class="format-showcase-group">
+                <span class="format-showcase-label">Внутри формата</span>
+                <ul class="format-showcase-features">
+                  <li>Управление влиянием</li>
+                  <li>Управление командой</li>
+                  <li>Влияние руководителя</li>
+                </ul>
+              </div>
+              <div class="format-showcase-result">
+                <span class="format-showcase-label">Результат</span>
+                <p>Команда уходит с готовыми инструментами и договорённостями. Эффект — уже на следующий день.</p>
+              </div>
+            </div>
+          </article>
+          <article class="format-showcase-card">
+            <div class="format-showcase-top">
+              <span class="format-showcase-index">02</span>
+              <span class="format-showcase-duration">1–2 дня</span>
+            </div>
+            <div class="format-showcase-body">
+              <h4>Проектная форсайт-сессия</h4>
+              <p class="format-showcase-text">Стратегическая работа с командой по методологии Rapid Foresight. Переводим идеи в системные проекты.</p>
+              <div class="format-showcase-group">
+                <span class="format-showcase-label">Внутри формата</span>
+                <ul class="format-showcase-features">
+                  <li>Управление идеями</li>
+                  <li>Пересборка взаимодействия</li>
+                  <li>Стратегическое планирование</li>
+                </ul>
+              </div>
+              <div class="format-showcase-result">
+                <span class="format-showcase-label">Результат</span>
+                <p>Из разрозненных идей — конкретные проекты с командами, дорожными картами и ответственными.</p>
+              </div>
+            </div>
+          </article>
+          <article class="format-showcase-card">
+            <div class="format-showcase-top">
+              <span class="format-showcase-index">03</span>
+              <span class="format-showcase-duration">1–12 месяцев</span>
+            </div>
+            <div class="format-showcase-body">
+              <h4>Акселерация управления</h4>
+              <p class="format-showcase-text">Системная трансформация коммуникаций внутри организации. Измеримый рост управляемости.</p>
+              <div class="format-showcase-group">
+                <span class="format-showcase-label">Внутри формата</span>
+                <ul class="format-showcase-features">
+                  <li>Управление изменениями</li>
+                  <li>Диагностика системы</li>
+                  <li>Единый язык команды</li>
+                </ul>
+              </div>
+              <div class="format-showcase-result">
+                <span class="format-showcase-label">Результат</span>
+                <p>Коммуникации переходят из «ощущений» в управляемую систему. Рост показателей зафиксирован и измерен.</p>
+              </div>
+            </div>
+          </article>
+        </div>`,
       isPublished: true
     },
     {
       id: "methodology",
       title: "Методология 5 шагов",
       bodyHtml:
-        "<ol class='timeline'><li>Диагностика</li><li>Выявление разрывов</li><li>Пересборка контуров взаимодействия</li><li>Единый язык команды</li><li>Фиксация результата</li></ol>",
+        "<ol class='timeline'><li>Диагностика системы</li><li>Выявление разрывов</li><li>Пересборка взаимодействия</li><li>Единый язык коммуникации</li><li>Управляемый результат</li></ol>",
       isPublished: true
     },
     {
       id: "team",
       title: "Команда Арткомм",
-      bodyHtml:
-        '<div class="modal-grid team-grid"><article><i>РС</i><span>Роман Скудняков</span><small>Руководитель проекта</small></article><article><i>ОР</i><span>Ольга Рыхлова</span><small>Учредитель</small></article><article><i>АМ</i><span>Анна М.</span><small>Аналитик</small></article><article><i>ДС</i><span>Дмитрий С.</span><small>Методолог</small></article><article><i>ЕК</i><span>Екатерина К.</span><small>Продюсер программ</small></article><article><i>ПЛ</i><span>Павел Л.</span><small>Фасилитатор</small></article><article><i>ЮТ</i><span>Юлия Т.</span><small>Коммуникации</small></article><article><i>МГ</i><span>Михаил Г.</span><small>Координатор</small></article></div>',
+      bodyHtml: String.raw`
+        <div class="modal-grid team-grid">
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">ОП</div></div>
+            <div class="team-card-copy"><span>Ольга Парле</span><small>креативный директор</small></div>
+          </article>
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">АР</div></div>
+            <div class="team-card-copy"><span>Анна Романычева</span><small>директор по аналитике</small></div>
+          </article>
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">АФ</div></div>
+            <div class="team-card-copy"><span>Анастасия Филимонова</span><small>операционный руководитель проектов</small></div>
+          </article>
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">АХ</div></div>
+            <div class="team-card-copy"><span>Альрам Хайретдинов</span><small>руководитель визуальных коммуникаций</small></div>
+          </article>
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">ТК</div></div>
+            <div class="team-card-copy"><span>Туйаара Кычкина</span><small>эксперт по наставничеству</small></div>
+          </article>
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">ПС</div></div>
+            <div class="team-card-copy"><span>Павел Скудняков</span><small>менеджер проектов</small></div>
+          </article>
+          <article class="team-card">
+            <div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">МП</div></div>
+            <div class="team-card-copy"><span>Мария Первушкина</span><small>эксперт по SMM аналитике</small></div>
+          </article>
+        </div>`,
       isPublished: true
     },
     {
       id: "awards",
       title: "Профессиональные награды",
-      bodyHtml:
-        "<ul><li>Серебряный лучник, 2024</li><li>Знак Росатома, 2025</li><li>Премия НН, 2022</li><li>Благодарности регионов</li><li>ТВ «Без галстука»</li></ul>",
+      bodyHtml: String.raw`
+        <div class="awards-sheet">
+          <section class="awards-block" data-section="expert">
+            <h4>Об эксперте</h4>
+            <ul class="awards-list">
+              <li>Кандидат политических наук</li>
+              <li>Лектор Российского общества «Знание»</li>
+              <li>Партнёр Мастерской управления «Сенеж»</li>
+              <li>Эксперт по коммуникационному лидерству</li>
+              <li>Архитектор управляемости команд через коммуникации</li>
+              <li>20+ лет в управлении коммуникациями: губернаторы, мэры, 31 город Росатома</li>
+              <li>Соавтор Индекса коммуникационной состоятельности, верифицированного ЦИРКОН</li>
+              <li>Автор методики развития сообществ, апробированной на 1000+ участниках в 30 городах</li>
+            </ul>
+          </section>
+          <section class="awards-block" data-section="awards">
+            <h4>Профессиональные награды</h4>
+            <ul class="awards-list">
+              <li>Победитель национальной премии «Серебряный Лучник»</li>
+              <li>Лауреат Премии Нижнего Новгорода (2022), телепроект «Без галстука» («ОТР», «Волга»)</li>
+              <li>Почётная грамота Госкорпорации «Росатом», 2023 год</li>
+              <li>Знак отличия Госкорпорации «Росатом» «За вклад в развитие атомной отрасли», II степени, 2025 год</li>
+            </ul>
+          </section>
+          <section class="awards-block" data-section="letters">
+            <h4>Благодарственные письма</h4>
+            <ul class="awards-list">
+              <li>Главы Республики Саха (Якутия) А. С. Николаева, 2023 год</li>
+              <li>Губернатора Камчатского края В. В. Солодова, 2023 год</li>
+              <li>ВРИО губернатора Чукотского автономного округа В. Г. Кузнецова, 2023 год</li>
+              <li>Губернатора Сахалинской области В. И. Лимаренко, 2022 год</li>
+            </ul>
+          </section>
+        </div>`,
       isPublished: true
     },
     {

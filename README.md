@@ -220,6 +220,25 @@ sudo install -m 600 -o root -g root deploy/systemd/artcomm-cms.env.example /etc/
   - в `smtp` режиме нужны валидные SMTP-параметры.
 - Если SMTP не настроен, API вернет `service_unavailable`.
 
+## 14. Деплой через GitHub Actions
+
+В репозитории настроен автоматический деплой из ветки `main` через GitHub Actions:
+
+- workflow: `.github/workflows/deploy.yml`
+- при каждом push в `main` сначала запускается сборка
+- затем workflow подключается к серверу по SSH и запускает `scripts/deploy-prod.sh`
+- вручную тот же workflow можно запустить через `workflow_dispatch`
+
+Что нужно добавить в Secrets репозитория:
+
+- `DEPLOY_HOST` — хост сервера
+- `DEPLOY_USER` — пользователь для SSH
+- `DEPLOY_SSH_KEY` — приватный SSH-ключ
+- `DEPLOY_PORT` — необязательно, если порт не `22`
+- `DEPLOY_PATH` — необязательно, если путь не `/var/www/Artcomm`
+
+На сервере должен уже быть развернут проект в `DEPLOY_PATH`, а скрипт `scripts/deploy-prod.sh` — доступен для запуска.
+
 ---
 
 Если меняете структуру CMS-данных, обязательно синхронно обновляйте:

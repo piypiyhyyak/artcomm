@@ -27,6 +27,7 @@ import {
   setUsersRemote,
   verifySensitiveGate
 } from "./cms/storage";
+import { sanitizeSrc } from "./cms/security";
 
 const NAV_ITEMS = [
   { key: "dashboard", label: "Главная" },
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { key: "media", label: "Медиа" },
   { key: "docs", label: "Документы" },
   { key: "home", label: "Контент главной" },
+  { key: "projects", label: "Контент /projects" },
   { key: "about", label: "Контент /about" },
   { key: "modals", label: "Модальные окна" },
   { key: "users", label: "Пользователи" }
@@ -172,10 +174,7 @@ function formatVersionTrigger(trigger) {
   if (key === "publish") {
     return "Публикация";
   }
-  if (key === "rollback") {
-    return "Откат версии";
-  }
-  return "Сохранение черновика";
+  return "Версия";
 }
 
 function formatFileSize(bytes) {
@@ -961,7 +960,8 @@ function TitleTextListEditor({
   onChange,
   idPrefix,
   titleLabel = "Заголовок",
-  textLabel = "Описание"
+  textLabel = "Описание",
+  textKey = "text"
 }) {
   const safeItems = Array.isArray(items) ? items : [];
 
@@ -989,10 +989,10 @@ function TitleTextListEditor({
               />
               <TextField
                 label={textLabel}
-                value={entry.text || ""}
+                value={entry[textKey] || ""}
                 rows={3}
                 disabled={readonly}
-                onChange={(event) => updateAt(index, { text: event.target.value })}
+                onChange={(event) => updateAt(index, { [textKey]: event.target.value })}
               />
               <Toggle
                 label="Показывать"
@@ -1022,7 +1022,7 @@ function TitleTextListEditor({
             {
               id: makeId(idPrefix),
               title: "Новый пункт",
-              text: "",
+              [textKey]: "",
               isPublished: true
             }
           ])
@@ -1196,6 +1196,70 @@ function VideoEditor({ media, readonly, onChange, localPreviewMap, onPickPreview
   );
 }
 
+function SingleVideoAssetEditor({
+  title,
+  subtitle,
+  value,
+  readonly,
+  onChange,
+  localPreviewMap,
+  onPickPreview,
+  onUploadFile,
+  uploadFolder,
+  previewKey = "singleVideo"
+}) {
+  const currentPath = String(value || "").trim();
+  const previewSrc = localPreviewMap[previewKey] || currentPath;
+
+  return (
+    <Panel title={title} subtitle={subtitle}>
+      <div className="ap-list">
+        <article className="ap-item">
+          <div className="ap-item-body ap-item-video">
+            <div className="ap-video-wrap">
+              {previewSrc ? (
+                <video
+                  className="ap-video"
+                  controls
+                  muted
+                  preload="metadata"
+                  src={previewSrc}
+                />
+              ) : (
+                <div className="ap-thumb-empty">Видео не задано</div>
+              )}
+            </div>
+
+            <div className="ap-item-fields">
+              <Field
+                label="Путь к видео"
+                value={currentPath}
+                disabled={readonly}
+                onChange={(event) => onChange(event.target.value)}
+              />
+
+              <UploadButton
+                label="Загрузить видео"
+                accept={ACCEPT_VIDEO}
+                disabled={readonly}
+                kind="plus"
+                onPick={async (file) => {
+                  const path = await onUploadFile(file, uploadFolder);
+                  if (!path) {
+                    return;
+                  }
+                  onChange(path);
+                  onPickPreview(previewKey, file);
+                }}
+              />
+            </div>
+          </div>
+        </article>
+      </div>
+    </Panel>
+  );
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -1224,16 +1288,139 @@ function getNodesText(root, selector) {
     .filter(Boolean);
 }
 
+const DEFAULT_FORMATS_MODAL_EDITOR = {
+  lead: "Выбирайте глубину погружения: от одной сессии до системной трансформации на год",
+  cards: [
+    {
+      number: "01",
+      duration: "2–4 часа",
+      title: "Управленческая сессия",
+      description: "Практическая сессия для команды или руководителя. Работаем с конкретными задачами прямо в зале.",
+      featuresText: "Управление влиянием\nУправление командой\nВлияние руководителя",
+      result: "Команда уходит с готовыми инструментами и договорённостями. Эффект — уже на следующий день."
+    },
+    {
+      number: "02",
+      duration: "1–2 дня",
+      title: "Проектная форсайт-сессия",
+      description: "Стратегическая работа с командой по методологии Rapid Foresight. Переводим идеи в системные проекты.",
+      featuresText: "Управление идеями\nПересборка взаимодействия\nСтратегическое планирование",
+      result: "Из разрозненных идей — конкретные проекты с командами, дорожными картами и ответственными."
+    },
+    {
+      number: "03",
+      duration: "1–12 месяцев",
+      title: "Акселерация управления",
+      description: "Системная трансформация коммуникаций внутри организации. Измеримый рост управляемости.",
+      featuresText: "Управление изменениями\nДиагностика системы\nЕдиный язык команды",
+      result: "Коммуникации переходят из «ощущений» в управляемую систему. Рост показателей зафиксирован и измерен."
+    }
+  ]
+};
+
+function cloneDefaultFormatsCards() {
+  return DEFAULT_FORMATS_MODAL_EDITOR.cards.map((card) => ({ ...card }));
+}
+
+const DEFAULT_MEDIASTATION_REVIEW_CARDS = [
+  {
+    image: "",
+    alt: "Ольга Петрова",
+    name: "Ольга Петрова",
+    meta: "Заместитель министра науки РФ",
+    quote:
+      "«Формат МедиаСтанции показал, что работа с коммуникациями напрямую влияет на скорость реализации решений и качество командного взаимодействия.»"
+  },
+  {
+    image: "",
+    alt: "Елена Светлова",
+    name: "Елена Светлова",
+    meta: "Озёрск",
+    quote: "«Я увидела, как командные договорённости становятся реальными действиями уже в первые недели.»"
+  },
+  {
+    image: "",
+    alt: "Ульяна Реброва",
+    name: "Ульяна Реброва",
+    meta: "Полярные Зори",
+    quote: "«Проект дал нам язык, на котором можно обсуждать сложные задачи без конфликтов.»"
+  }
+];
+
+function cloneDefaultReviewCards() {
+  return DEFAULT_MEDIASTATION_REVIEW_CARDS.map((card) => ({ ...card }));
+}
+
+const DEFAULT_TEAM_MODAL_MEMBERS = [
+  { image: "", alt: "Ольга Парле", name: "Ольга Парле", role: "креативный директор" },
+  { image: "", alt: "Анна Романычева", name: "Анна Романычева", role: "директор по аналитике" },
+  { image: "", alt: "Анастасия Филимонова", name: "Анастасия Филимонова", role: "операционный руководитель проектов" },
+  { image: "", alt: "Альрам Хайретдинов", name: "Альрам Хайретдинов", role: "руководитель визуальных коммуникаций" },
+  { image: "", alt: "Туйаара Кычкина", name: "Туйаара Кычкина", role: "эксперт по наставничеству" },
+  { image: "", alt: "Павел Скудняков", name: "Павел Скудняков", role: "менеджер проектов" },
+  { image: "", alt: "Мария Первушкина", name: "Мария Первушкина", role: "эксперт по SMM аналитике" }
+];
+
+const DEFAULT_AWARDS_MODAL_EDITOR = {
+  expertText: [
+    "Кандидат политических наук",
+    "Лектор Российского общества «Знание»",
+    "Партнёр Мастерской управления «Сенеж»",
+    "Эксперт по коммуникационному лидерству",
+    "Архитектор управляемости команд через коммуникации",
+    "20+ лет в управлении коммуникациями: губернаторы, мэры, 31 город Росатома",
+    "Соавтор Индекса коммуникационной состоятельности, верифицированного ЦИРКОН",
+    "Автор методики развития сообществ, апробированной на 1000+ участниках в 30 городах"
+  ].join("\n"),
+  awardsText: [
+    "Победитель национальной премии «Серебряный Лучник»",
+    "Лауреат Премии Нижнего Новгорода (2022), телепроект «Без галстука» («ОТР», «Волга»)",
+    "Почётная грамота Госкорпорации «Росатом», 2023 год",
+    "Знак отличия Госкорпорации «Росатом» «За вклад в развитие атомной отрасли», II степени, 2025 год"
+  ].join("\n"),
+  lettersText: [
+    "Главы Республики Саха (Якутия) А. С. Николаева, 2023 год",
+    "Губернатора Камчатского края В. В. Солодова, 2023 год",
+    "ВРИО губернатора Чукотского автономного округа В. Г. Кузнецова, 2023 год",
+    "Губернатора Сахалинской области В. И. Лимаренко, 2022 год"
+  ].join("\n")
+};
+
+function cloneDefaultTeamMembers() {
+  return DEFAULT_TEAM_MODAL_MEMBERS.map((item) => ({ ...item }));
+}
+
+function getShortInitials(value, fallback = "XX") {
+  const parts = String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+  return initials || fallback;
+}
+
+function parseLegacyFormatFeatures(value) {
+  return String(value || "")
+    .split("#")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 function getModalEditorKind(modalId) {
   const id = String(modalId || "");
   if (id === "ms-results") return "ms-results";
-  if (id === "ms-participants") return "quotes";
+  if (id === "ms-participants") return "review-cards";
   if (id === "ms-minister") return "quote-note";
   if (id === "sovereignty") return "lead-list-note";
   if (id === "formats") return "cards";
   if (id === "methodology") return "steps";
   if (id === "team") return "team";
-  if (id === "awards") return "list";
+  if (id === "awards") return "awards";
   if (id === "achievements") return "achievements";
   return "paragraphs";
 }
@@ -1268,6 +1455,23 @@ function parseModalBodyForEditor(modalId, bodyHtml) {
     };
   }
 
+  if (kind === "review-cards") {
+    const cards = root
+      ? Array.from(root.querySelectorAll(".modal-review-card")).map((item) => ({
+          image: (item.querySelector("img")?.getAttribute("src") || "").trim(),
+          alt: (item.querySelector("img")?.getAttribute("alt") || "").trim(),
+          name: (item.querySelector("h4")?.textContent || "").trim(),
+          meta: (item.querySelector(".modal-review-meta")?.textContent || "").trim(),
+          quote: (item.querySelector(".modal-review-text")?.textContent || "").trim()
+        }))
+      : [];
+
+    return {
+      kind,
+      cards: cards.length ? cards : cloneDefaultReviewCards()
+    };
+  }
+
   if (kind === "quote-note") {
     const paragraphs = getNodesText(root, "p:not(.modal-note)");
     return {
@@ -1288,15 +1492,44 @@ function parseModalBodyForEditor(modalId, bodyHtml) {
   }
 
   if (kind === "cards") {
-    const lines = root
-      ? Array.from(root.querySelectorAll(".format-cards article")).map((item) => {
-          const title = (item.querySelector("h4")?.textContent || "").trim();
-          const duration = (item.querySelector("p:not(.tags)")?.textContent || "").trim();
-          const tags = (item.querySelector(".tags")?.textContent || "").trim();
-          return [title, duration, tags].filter(Boolean).join(" | ");
+    const nextCards = root
+      ? Array.from(root.querySelectorAll(".format-showcase-card")).map((item) => ({
+          number: (item.querySelector(".format-showcase-index")?.textContent || "").trim(),
+          duration: (item.querySelector(".format-showcase-duration")?.textContent || "").trim(),
+          title: (item.querySelector("h4")?.textContent || "").trim(),
+          description: (item.querySelector(".format-showcase-text")?.textContent || "").trim(),
+          featuresText: listToMultiline(getNodesText(item, ".format-showcase-features li")),
+          result: (item.querySelector(".format-showcase-result p")?.textContent || "").trim()
+        }))
+      : [];
+
+    if (nextCards.length) {
+      return {
+        kind,
+        lead: (root?.querySelector(".formats-modal-lead")?.textContent || DEFAULT_FORMATS_MODAL_EDITOR.lead).trim(),
+        cards: nextCards
+      };
+    }
+
+    const legacyCards = root
+      ? Array.from(root.querySelectorAll(".format-cards article")).map((item, index) => {
+          const fallback = DEFAULT_FORMATS_MODAL_EDITOR.cards[index] || DEFAULT_FORMATS_MODAL_EDITOR.cards[0];
+          return {
+            number: fallback.number,
+            duration: (item.querySelector("p:not(.tags)")?.textContent || fallback.duration).trim(),
+            title: (item.querySelector("h4")?.textContent || fallback.title).trim(),
+            description: fallback.description,
+            featuresText: parseLegacyFormatFeatures(item.querySelector(".tags")?.textContent || fallback.featuresText),
+            result: fallback.result
+          };
         })
       : [];
-    return { kind, cardsText: listToMultiline(lines) };
+
+    return {
+      kind,
+      lead: DEFAULT_FORMATS_MODAL_EDITOR.lead,
+      cards: legacyCards.length ? legacyCards : cloneDefaultFormatsCards()
+    };
   }
 
   if (kind === "steps") {
@@ -1307,21 +1540,43 @@ function parseModalBodyForEditor(modalId, bodyHtml) {
   }
 
   if (kind === "team") {
-    const lines = root
+    const cards = root
       ? Array.from(root.querySelectorAll(".team-grid article")).map((item) => {
-          const initials = (item.querySelector("i")?.textContent || "").trim();
-          const name = (item.querySelector("span")?.textContent || "").trim();
-          const role = (item.querySelector("small")?.textContent || "").trim();
-          return [initials, name, role].filter(Boolean).join(" | ");
+          const imageNode = item.querySelector(".team-card-media img, img");
+          const name = (item.querySelector(".team-card-copy span, span")?.textContent || "").trim();
+          const role = (item.querySelector(".team-card-copy small, small")?.textContent || "").trim();
+          return {
+            image: (imageNode?.getAttribute("src") || "").trim(),
+            alt: (imageNode?.getAttribute("alt") || "").trim(),
+            name,
+            role
+          };
         })
       : [];
-    return { kind, membersText: listToMultiline(lines) };
+    return {
+      kind,
+      cards: cards.length ? cards : cloneDefaultTeamMembers()
+    };
   }
 
   if (kind === "list") {
     return {
       kind,
       listText: listToMultiline(getNodesText(root, "ul li"))
+    };
+  }
+
+  if (kind === "awards") {
+    const expertList = getNodesText(root, '.awards-sheet [data-section="expert"] li');
+    const awardsList = getNodesText(root, '.awards-sheet [data-section="awards"] li');
+    const lettersList = getNodesText(root, '.awards-sheet [data-section="letters"] li');
+    const fallbackList = getNodesText(root, "ul li");
+
+    return {
+      kind,
+      expertText: listToMultiline(expertList.length ? expertList : multilineToList(DEFAULT_AWARDS_MODAL_EDITOR.expertText)),
+      awardsText: listToMultiline(awardsList.length ? awardsList : (fallbackList.length ? fallbackList : multilineToList(DEFAULT_AWARDS_MODAL_EDITOR.awardsText))),
+      lettersText: listToMultiline(lettersList.length ? lettersList : multilineToList(DEFAULT_AWARDS_MODAL_EDITOR.lettersText))
     };
   }
 
@@ -1376,6 +1631,31 @@ function buildModalBodyFromEditor(modalId, data) {
       .join("");
   }
 
+  if (kind === "review-cards") {
+    const cards = Array.isArray(data.cards) ? data.cards : [];
+    return `<div class="modal-review-list">${cards
+      .map((card) => {
+        const image = sanitizeSrc(card?.image || "");
+        const alt = escapeHtml(String(card?.alt || card?.name || "").trim());
+        const name = escapeHtml(String(card?.name || "").trim());
+        const meta = escapeHtml(String(card?.meta || "").trim());
+        const quote = escapeHtml(String(card?.quote || "").trim());
+        if (!name && !meta && !quote && !image) {
+          return "";
+        }
+        const initials = escapeHtml(getShortInitials(card?.name || "", "Фото"));
+        return `<article class="modal-review-card">
+            <div class="modal-review-media">${image ? `<img src="${image}" alt="${alt}" loading="lazy">` : `<div class="modal-review-avatar-empty" aria-hidden="true">${initials}</div>`}</div>
+            <div class="modal-review-copy">
+              ${name ? `<h4>${name}</h4>` : ""}
+              ${meta ? `<p class="modal-review-meta">${meta}</p>` : ""}
+              ${quote ? `<p class="modal-review-text">${quote}</p>` : ""}
+            </div>
+          </article>`;
+      })
+      .join("")}</div>`;
+  }
+
   if (kind === "quote-note") {
     const quote = String(data.quote || "").trim();
     const note = String(data.note || "").trim();
@@ -1391,17 +1671,39 @@ function buildModalBodyFromEditor(modalId, data) {
   }
 
   if (kind === "cards") {
-    const cards = multilineToList(data.cardsText || "")
-      .map((line) => line.split("|").map((part) => part.trim()))
-      .filter((parts) => parts[0] || parts[1] || parts[2])
-      .map((parts) => {
-        const title = escapeHtml(parts[0] || "Новый формат");
-        const duration = escapeHtml(parts[1] || "");
-        const tags = escapeHtml(parts[2] || "");
-        return `<article><h4>${title}</h4><p>${duration}</p><p class="tags">${tags}</p></article>`;
-      })
+    const lead = escapeHtml(String(data.lead || "").trim());
+    const cards = (Array.isArray(data.cards) ? data.cards : [])
+      .map((card) => ({
+        number: escapeHtml(String(card?.number || "").trim()),
+        duration: escapeHtml(String(card?.duration || "").trim()),
+        title: escapeHtml(String(card?.title || "").trim()),
+        description: escapeHtml(String(card?.description || "").trim()),
+        features: multilineToList(card?.featuresText || ""),
+        result: escapeHtml(String(card?.result || "").trim())
+      }))
+      .filter((card) => card.title || card.duration || card.description || card.features.length || card.result)
+      .map(
+        (card) => `<article class="format-showcase-card">
+            <div class="format-showcase-top">
+              <span class="format-showcase-index">${card.number || "00"}</span>
+              <span class="format-showcase-duration">${card.duration}</span>
+            </div>
+            <div class="format-showcase-body">
+              <h4>${card.title || "Новый формат"}</h4>
+              ${card.description ? `<p class="format-showcase-text">${card.description}</p>` : ""}
+              <div class="format-showcase-group">
+                <span class="format-showcase-label">Внутри формата</span>
+                <ul class="format-showcase-features">${card.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
+              </div>
+              <div class="format-showcase-result">
+                <span class="format-showcase-label">Результат</span>
+                <p>${card.result}</p>
+              </div>
+            </div>
+          </article>`
+      )
       .join("");
-    return `<div class="modal-grid format-cards">${cards}</div>`;
+    return `${lead ? `<p class="formats-modal-lead">${lead}</p>` : ""}<div class="modal-grid format-showcase">${cards}</div>`;
   }
 
   if (kind === "steps") {
@@ -1410,14 +1712,23 @@ function buildModalBodyFromEditor(modalId, data) {
   }
 
   if (kind === "team") {
-    const members = multilineToList(data.membersText || "")
-      .map((line) => line.split("|").map((part) => part.trim()))
-      .filter((parts) => parts[0] || parts[1] || parts[2])
-      .map((parts) => {
-        const initials = escapeHtml(parts[0] || "XX");
-        const name = escapeHtml(parts[1] || "Новый участник");
-        const role = escapeHtml(parts[2] || "Роль");
-        return `<article><i>${initials}</i><span>${name}</span><small>${role}</small></article>`;
+    const members = (Array.isArray(data.cards) ? data.cards : [])
+      .map((card) => {
+        const image = sanitizeSrc(card?.image || "");
+        const name = escapeHtml(String(card?.name || "").trim());
+        const role = escapeHtml(String(card?.role || "").trim());
+        const alt = escapeHtml(String(card?.alt || card?.name || "").trim());
+        if (!name && !role && !image) {
+          return "";
+        }
+        const initials = escapeHtml(getShortInitials(card?.name || ""));
+        return `<article class="team-card">
+            <div class="team-card-media">${image ? `<img src="${image}" alt="${alt}" loading="lazy">` : `<div class="team-card-avatar-empty" aria-hidden="true">${initials}</div>`}</div>
+            <div class="team-card-copy">
+              ${name ? `<span>${name}</span>` : ""}
+              ${role ? `<small>${role}</small>` : ""}
+            </div>
+          </article>`;
       })
       .join("");
     return `<div class="modal-grid team-grid">${members}</div>`;
@@ -1426,6 +1737,28 @@ function buildModalBodyFromEditor(modalId, data) {
   if (kind === "list") {
     const items = multilineToList(data.listText || "");
     return `<ul>${items.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+  }
+
+  if (kind === "awards") {
+    const expertPoints = multilineToList(data.expertText || "");
+    const awardsPoints = multilineToList(data.awardsText || "");
+    const lettersPoints = multilineToList(data.lettersText || "");
+    const renderList = (items) => `<ul class="awards-list">${items.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+
+    return `<div class="awards-sheet">
+        <section class="awards-block" data-section="expert">
+          <h4>Об эксперте</h4>
+          ${renderList(expertPoints)}
+        </section>
+        <section class="awards-block" data-section="awards">
+          <h4>Профессиональные награды</h4>
+          ${renderList(awardsPoints)}
+        </section>
+        <section class="awards-block" data-section="letters">
+          <h4>Благодарственные письма</h4>
+          ${renderList(lettersPoints)}
+        </section>
+      </div>`;
   }
 
   if (kind === "achievements") {
@@ -1442,7 +1775,405 @@ function buildModalBodyFromEditor(modalId, data) {
   return paragraphs.map((line) => `<p>${escapeHtml(line)}</p>`).join("");
 }
 
-function ModalBodyEditor({ entry, readonly, onChange }) {
+function FormatCardsEditor({ editorData, readonly, onChange }) {
+  const cards = Array.isArray(editorData.cards) && editorData.cards.length ? editorData.cards : cloneDefaultFormatsCards();
+
+  const updateCard = (cardIndex, patch) => {
+    const nextCards = cards.map((card, index) => (index === cardIndex ? { ...card, ...patch } : { ...card }));
+    onChange({ cards: nextCards });
+  };
+
+  return (
+    <div className="ap-stack">
+      <TextField
+        label="Вводный текст"
+        rows={2}
+        value={editorData.lead}
+        disabled={readonly}
+        onChange={(event) => onChange({ lead: event.target.value })}
+      />
+
+      <div className="ap-list">
+        {cards.map((card, index) => (
+          <article className="ap-item" key={`format-card-${index}`}>
+            <div className="ap-item-head">
+              <span className="ap-item-index">{index + 1}</span>
+              <strong>{card.title || `Формат ${index + 1}`}</strong>
+            </div>
+            <div className="ap-item-body ap-item-doc">
+              <div className="ap-item-fields">
+                <div className="ap-grid ap-grid-2">
+                  <Field
+                    label="Номер"
+                    value={card.number}
+                    disabled={readonly}
+                    onChange={(event) => updateCard(index, { number: event.target.value })}
+                  />
+                  <Field
+                    label="Длительность"
+                    value={card.duration}
+                    disabled={readonly}
+                    onChange={(event) => updateCard(index, { duration: event.target.value })}
+                  />
+                  <Field
+                    label="Заголовок"
+                    value={card.title}
+                    disabled={readonly}
+                    onChange={(event) => updateCard(index, { title: event.target.value })}
+                  />
+                </div>
+                <TextField
+                  label="Описание"
+                  rows={3}
+                  value={card.description}
+                  disabled={readonly}
+                  onChange={(event) => updateCard(index, { description: event.target.value })}
+                />
+                <TextField
+                  label="Элементы внутри формата (каждый с новой строки)"
+                  rows={4}
+                  value={card.featuresText}
+                  disabled={readonly}
+                  onChange={(event) => updateCard(index, { featuresText: event.target.value })}
+                />
+                <TextField
+                  label="Результат"
+                  rows={3}
+                  value={card.result}
+                  disabled={readonly}
+                  onChange={(event) => updateCard(index, { result: event.target.value })}
+                />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TeamMembersModalEditor({
+  entry,
+  editorData,
+  readonly,
+  onChange,
+  localPreviewMap,
+  onPickPreview,
+  onUploadFile,
+  onDeleteFile,
+  uploadFolder
+}) {
+  const cards = Array.isArray(editorData.cards) && editorData.cards.length ? editorData.cards : cloneDefaultTeamMembers();
+
+  function updateCards(nextCards) {
+    onChange({ cards: nextCards });
+  }
+
+  function updateCard(index, patch) {
+    updateCards(cards.map((card, cardIndex) => (cardIndex === index ? { ...card, ...patch } : { ...card })));
+  }
+
+  return (
+    <div className="ap-stack">
+      <div className="ap-toolbar">
+        <button
+          type="button"
+          className="ap-btn ap-btn-plus"
+          disabled={readonly}
+          onClick={() =>
+            updateCards([
+              ...cards,
+              {
+                image: "",
+                alt: "",
+                name: "Новый участник",
+                role: ""
+              }
+            ])
+          }
+        >
+          <span>+</span>
+          <span>Добавить участника</span>
+        </button>
+      </div>
+
+      <DraggableList
+        items={cards}
+        readonly={readonly}
+        getKey={(item, index) => `${entry.id}-team-${index}-${item.name || "member"}`}
+        onReorder={updateCards}
+        renderItem={(card, index) => {
+          const previewKey = `${entry.id}-team-${index}`;
+          const preview = localPreviewMap[previewKey] || card.image;
+
+          return (
+            <div className="ap-item-body ap-item-doc">
+              <div className="ap-item-fields">
+                <div className="ap-review-editor-grid">
+                  <div className="ap-thumb-wrap ap-thumb-wrap-review">
+                    {preview ? (
+                      <img src={preview} alt={card.alt || card.name || "preview"} className="ap-thumb ap-thumb-review" />
+                    ) : (
+                      <div className="ap-thumb-empty">{getShortInitials(card.name || "Участник")}</div>
+                    )}
+                  </div>
+
+                  <div className="ap-stack ap-review-editor-fields">
+                    <div className="ap-grid ap-grid-2">
+                      <Field
+                        label="Имя"
+                        value={card.name || ""}
+                        disabled={readonly}
+                        onChange={(event) => updateCard(index, { name: event.target.value })}
+                      />
+                      <Field
+                        label="Роль"
+                        value={card.role || ""}
+                        disabled={readonly}
+                        onChange={(event) => updateCard(index, { role: event.target.value })}
+                      />
+                    </div>
+
+                    <Field
+                      label="Путь к фото"
+                      value={card.image || ""}
+                      disabled
+                    />
+
+                    <Field
+                      label="Alt"
+                      value={card.alt || ""}
+                      disabled={readonly}
+                      onChange={(event) => updateCard(index, { alt: event.target.value })}
+                    />
+
+                    <div className="ap-item-actions">
+                      <div className="ap-action-buttons">
+                        <button
+                          type="button"
+                          className="ap-btn ap-btn-danger"
+                          disabled={readonly}
+                          onClick={async () => {
+                            await onDeleteFile(card.image);
+                            updateCards(cards.filter((_, cardIndex) => cardIndex !== index));
+                          }}
+                        >
+                          Удалить
+                        </button>
+
+                        <UploadButton
+                          label="Загрузить фото"
+                          accept={ACCEPT_IMAGES}
+                          disabled={readonly}
+                          onPick={async (file) => {
+                            const previousPath = card.image;
+                            const path = await onUploadFile(file, uploadFolder);
+                            if (!path) {
+                              return;
+                            }
+                            updateCard(index, {
+                              image: path,
+                              alt: card.alt || card.name || getFileBaseName(file.name)
+                            });
+                            onPickPreview(previewKey, file);
+                            if (previousPath && previousPath !== path) {
+                              await onDeleteFile(previousPath);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }}
+      />
+    </div>
+  );
+}
+
+function AwardsModalEditor({ editorData, readonly, onChange }) {
+  return (
+    <div className="ap-grid ap-grid-3">
+      <TextField
+        label="Об эксперте (каждый пункт с новой строки)"
+        rows={10}
+        value={editorData.expertText}
+        disabled={readonly}
+        onChange={(event) => onChange({ expertText: event.target.value })}
+      />
+      <TextField
+        label="Награды (каждый пункт с новой строки)"
+        rows={10}
+        value={editorData.awardsText}
+        disabled={readonly}
+        onChange={(event) => onChange({ awardsText: event.target.value })}
+      />
+      <TextField
+        label="Благодарственные письма (каждый пункт с новой строки)"
+        rows={10}
+        value={editorData.lettersText}
+        disabled={readonly}
+        onChange={(event) => onChange({ lettersText: event.target.value })}
+      />
+    </div>
+  );
+}
+
+function ReviewCardsModalEditor({
+  entry,
+  editorData,
+  readonly,
+  onChange,
+  localPreviewMap,
+  onPickPreview,
+  onUploadFile,
+  onDeleteFile,
+  uploadFolder
+}) {
+  const cards = Array.isArray(editorData.cards) && editorData.cards.length ? editorData.cards : cloneDefaultReviewCards();
+
+  function updateCards(nextCards) {
+    onChange({ cards: nextCards });
+  }
+
+  function updateCard(index, patch) {
+    updateCards(cards.map((card, cardIndex) => (cardIndex === index ? { ...card, ...patch } : { ...card })));
+  }
+
+  return (
+    <div className="ap-stack">
+      <div className="ap-toolbar">
+        <button
+          type="button"
+          className="ap-btn ap-btn-plus"
+          disabled={readonly}
+          onClick={() =>
+            updateCards([
+              ...cards,
+              {
+                image: "",
+                alt: "",
+                name: "Новый отзыв",
+                meta: "",
+                quote: ""
+              }
+            ])
+          }
+        >
+          <span>+</span>
+          <span>Добавить отзыв</span>
+        </button>
+      </div>
+
+      <DraggableList
+        items={cards}
+        readonly={readonly}
+        getKey={(item, index) => `${entry.id}-review-${index}-${item.name || "card"}`}
+        onReorder={updateCards}
+        renderItem={(card, index) => {
+          const previewKey = `${entry.id}-review-${index}`;
+          const preview = localPreviewMap[previewKey] || card.image;
+
+          return (
+            <div className="ap-item-body ap-item-doc">
+              <div className="ap-item-fields">
+                <div className="ap-review-editor-grid">
+                  <div className="ap-thumb-wrap ap-thumb-wrap-review">
+                    {preview ? (
+                      <img src={preview} alt={card.alt || card.name || "preview"} className="ap-thumb ap-thumb-review" />
+                    ) : (
+                      <div className="ap-thumb-empty">Нет фото</div>
+                    )}
+                  </div>
+
+                  <div className="ap-stack ap-review-editor-fields">
+                    <div className="ap-grid ap-grid-2">
+                      <Field
+                        label="Имя"
+                        value={card.name || ""}
+                        disabled={readonly}
+                        onChange={(event) => updateCard(index, { name: event.target.value })}
+                      />
+                      <Field
+                        label="Подпись"
+                        value={card.meta || ""}
+                        disabled={readonly}
+                        onChange={(event) => updateCard(index, { meta: event.target.value })}
+                      />
+                    </div>
+
+                    <Field
+                      label="Путь к фото"
+                      value={card.image || ""}
+                      disabled
+                    />
+
+                    <Field
+                      label="Alt"
+                      value={card.alt || ""}
+                      disabled={readonly}
+                      onChange={(event) => updateCard(index, { alt: event.target.value })}
+                    />
+
+                    <TextField
+                      label="Текст отзыва"
+                      rows={4}
+                      value={card.quote || ""}
+                      disabled={readonly}
+                      onChange={(event) => updateCard(index, { quote: event.target.value })}
+                    />
+
+                    <div className="ap-item-actions">
+                      <div className="ap-action-buttons">
+                        <button
+                          type="button"
+                          className="ap-btn ap-btn-danger"
+                          disabled={readonly}
+                          onClick={async () => {
+                            await onDeleteFile(card.image);
+                            updateCards(cards.filter((_, cardIndex) => cardIndex !== index));
+                          }}
+                        >
+                          Удалить
+                        </button>
+
+                        <UploadButton
+                          label="Заменить файл"
+                          accept={ACCEPT_IMAGES}
+                          disabled={readonly}
+                          onPick={async (file) => {
+                            const previousPath = card.image;
+                            const path = await onUploadFile(file, uploadFolder);
+                            if (!path) {
+                              return;
+                            }
+                            updateCard(index, {
+                              image: path,
+                              alt: card.alt || card.name || getFileBaseName(file.name)
+                            });
+                            onPickPreview(previewKey, file);
+                            if (previousPath && previousPath !== path) {
+                              await onDeleteFile(previousPath);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }}
+      />
+    </div>
+  );
+}
+
+function ModalBodyEditor({ entry, readonly, onChange, localPreviewMap, onPickPreview, onUploadFile, onDeleteFile }) {
   const editorData = useMemo(
     () => parseModalBodyForEditor(entry.id, entry.bodyHtml),
     [entry.id, entry.bodyHtml]
@@ -1483,6 +2214,22 @@ function ModalBodyEditor({ entry, readonly, onChange }) {
         value={editorData.quotesText}
         disabled={readonly}
         onChange={(event) => updateBody({ quotesText: event.target.value })}
+      />
+    );
+  }
+
+  if (kind === "review-cards") {
+    return (
+      <ReviewCardsModalEditor
+        entry={entry}
+        editorData={editorData}
+        readonly={readonly}
+        onChange={updateBody}
+        localPreviewMap={localPreviewMap}
+        onPickPreview={onPickPreview}
+        onUploadFile={onUploadFile}
+        onDeleteFile={onDeleteFile}
+        uploadFolder="reviews"
       />
     );
   }
@@ -1537,15 +2284,7 @@ function ModalBodyEditor({ entry, readonly, onChange }) {
   }
 
   if (kind === "cards") {
-    return (
-      <TextField
-        label="Карточки (формат строки: Заголовок | Длительность | Теги)"
-        rows={8}
-        value={editorData.cardsText}
-        disabled={readonly}
-        onChange={(event) => updateBody({ cardsText: event.target.value })}
-      />
-    );
+    return <FormatCardsEditor editorData={editorData} readonly={readonly} onChange={updateBody} />;
   }
 
   if (kind === "steps") {
@@ -1562,12 +2301,16 @@ function ModalBodyEditor({ entry, readonly, onChange }) {
 
   if (kind === "team") {
     return (
-      <TextField
-        label="Команда (формат строки: Инициалы | Имя | Роль)"
-        rows={10}
-        value={editorData.membersText}
-        disabled={readonly}
-        onChange={(event) => updateBody({ membersText: event.target.value })}
+      <TeamMembersModalEditor
+        entry={entry}
+        editorData={editorData}
+        readonly={readonly}
+        onChange={updateBody}
+        localPreviewMap={localPreviewMap}
+        onPickPreview={onPickPreview}
+        onUploadFile={onUploadFile}
+        onDeleteFile={onDeleteFile}
+        uploadFolder="team"
       />
     );
   }
@@ -1582,6 +2325,10 @@ function ModalBodyEditor({ entry, readonly, onChange }) {
         onChange={(event) => updateBody({ listText: event.target.value })}
       />
     );
+  }
+
+  if (kind === "awards") {
+    return <AwardsModalEditor editorData={editorData} readonly={readonly} onChange={updateBody} />;
   }
 
   if (kind === "achievements") {
@@ -1821,8 +2568,7 @@ export default function AdminApp() {
     if (editLocked) {
       return;
     }
-    // Любое изменение в форме сразу считается правкой черновика.
-    // Серверная часть сама заведет snapshot-версию для возможного отката.
+    // Любое изменение в форме сразу сохраняется в черновик.
     const nextDraft = mutator(cloneDeep(draft));
     const nextState = saveDraft(() => nextDraft);
     syncState(nextState, message);
@@ -2141,7 +2887,7 @@ export default function AdminApp() {
     setAuthForm({ login: "", password: "" });
     setAuthError("");
     setAuthErrorHighlighted(false);
-    setFeedback(`Вход выполнен: ${ROLE_LABELS[result.session.role]}.`);
+    setFeedback("");
   }
 
   function handleLogout() {
@@ -2370,7 +3116,7 @@ export default function AdminApp() {
                 <article className="ap-instruction">
                   <h4>Инструкция по работе с панелью</h4>
                   <ol>
-                    <li>Слева выберите раздел: Медиа, Документы, Контент главной, Контент /about, Модальные окна, Пользователи.</li>
+                    <li>Слева выберите раздел: Медиа, Документы, Контент главной, Контент /projects, Контент /about, Модальные окна, Пользователи.</li>
                     <li>Все изменения сохраняются в черновик автоматически в момент редактирования.</li>
                     <li>Кнопка "Обновить" вверху перечитывает черновик из хранилища и нужна, если открыть панель в нескольких вкладках.</li>
                     <li>Кнопка "Опубликовать" переносит текущий черновик в публичную версию сайта.</li>
@@ -2387,7 +3133,7 @@ export default function AdminApp() {
           {tab === "versions" ? (
             <Panel
               title="Версионный контроль"
-              subtitle="Резервные копии создаются автоматически после сохранения черновика, публикации и отката."
+              subtitle="Резервные копии создаются только после публикации на сайт."
             >
               <div className="ap-version-toolbar">
                 <button
@@ -2464,7 +3210,7 @@ export default function AdminApp() {
                   })}
                 </div>
               ) : (
-                <p className="ap-subtitle">Пока нет сохранённых версий. Первая версия появится после сохранения черновика.</p>
+                <p className="ap-subtitle">Пока нет сохранённых версий. Первая версия появится после публикации на сайт.</p>
               )}
             </Panel>
           ) : null}
@@ -2716,37 +3462,6 @@ export default function AdminApp() {
                   />
                 </div>
               </Panel>
-
-              <ActionListEditor
-                title="Hero: кнопки"
-                subtitle="Порядок меняется перетаскиванием"
-                items={draft.home.hero.actions || []}
-                readonly={readonly}
-                idPrefix="hero-action"
-                maxItems={3}
-                defaultScrollTarget="#contacts"
-                defaultModalTarget="test"
-                onChange={(nextItems) =>
-                  updateDraft((next) => {
-                    next.home.hero.actions = nextItems;
-                    return next;
-                  })
-                }
-              />
-
-              <TrustLineEditor
-                title="Hero: строка доверия"
-                subtitle="Например: 20+ лет, 40+ городов, 1000+ участников"
-                items={draft.home.hero.trustLine || []}
-                readonly={readonly}
-                idPrefix="hero-trust"
-                onChange={(nextItems) =>
-                  updateDraft((next) => {
-                    next.home.hero.trustLine = nextItems;
-                    return next;
-                  })
-                }
-              />
 
               <Panel title="Секция «Знакомо?»: заголовки">
                 <div className="ap-grid ap-grid-2">
@@ -3036,8 +3751,8 @@ export default function AdminApp() {
                 items={draft.home.mediaStation.actions || []}
                 readonly={readonly}
                 idPrefix="ms-action"
-                maxItems={3}
-                defaultModalTarget="ms-results"
+                maxItems={1}
+                defaultModalTarget="ms-participants"
                 defaultScrollTarget="#ms"
                 onChange={(nextItems) =>
                   updateDraft((next) => {
@@ -3243,8 +3958,8 @@ export default function AdminApp() {
                 items={draft.home.expert.actions || []}
                 readonly={readonly}
                 idPrefix="expert-action"
-                maxItems={3}
-                defaultModalTarget="achievements"
+                maxItems={2}
+                defaultModalTarget="awards"
                 defaultScrollTarget="#expert"
                 onChange={(nextItems) =>
                   updateDraft((next) => {
@@ -3341,6 +4056,18 @@ export default function AdminApp() {
                     onChange={(event) =>
                       updateDraft((next) => {
                         next.home.contactsSection.trustedTitle = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <TextField
+                    label="Подпись под блоком доверия"
+                    rows={2}
+                    value={draft.home.contactsSection.trustedSubtitle || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.home.contactsSection.trustedSubtitle = event.target.value;
                         return next;
                       })
                     }
@@ -3506,6 +4233,252 @@ export default function AdminApp() {
                   />
                 </div>
               </Panel>
+            </div>
+          ) : null}
+
+          {tab === "projects" ? (
+            <div className="ap-stack">
+              <Panel title="Hero /projects">
+                <div className="ap-grid ap-grid-2">
+                  <Field
+                    label="Подзаголовок"
+                    value={draft.projects?.heroKicker || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.heroKicker = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Заголовок"
+                    value={draft.projects?.heroTitle || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.heroTitle = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <TextField
+                    label="Описание"
+                    rows={3}
+                    value={draft.projects?.heroLead || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.heroLead = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Кнопка перехода к списку проектов"
+                    value={draft.projects?.listingButtonLabel || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.listingButtonLabel = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Кикер секции полного перечня"
+                    value={draft.projects?.listingKicker || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.listingKicker = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Заголовок секции полного перечня"
+                    value={draft.projects?.listingTitle || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.listingTitle = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+              </Panel>
+
+              <Panel title="Флагманский проект /projects">
+                <div className="ap-grid ap-grid-2">
+                  <Field
+                    label="Подзаголовок"
+                    value={draft.projects?.flagship?.kicker || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.kicker = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Название проекта"
+                    value={draft.projects?.flagship?.title || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.title = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <TextField
+                    label="Краткое описание"
+                    rows={3}
+                    value={draft.projects?.flagship?.lead || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.lead = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Заголовок блока о проекте"
+                    value={draft.projects?.flagship?.aboutTitle || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.aboutTitle = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <TextField
+                    label="Текст блока о проекте"
+                    rows={4}
+                    value={draft.projects?.flagship?.aboutText || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.aboutText = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <TextField
+                    label="Подпись под видео"
+                    rows={2}
+                    value={draft.projects?.flagship?.videoCaption || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.videoCaption = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Кнопка отзывов"
+                    value={draft.projects?.flagship?.reviewsLabel || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.reviewsLabel = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Кнопка включения звука"
+                    value={draft.projects?.flagship?.soundLabel || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.soundLabel = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                  <Field
+                    label="Кнопка выключения звука"
+                    value={draft.projects?.flagship?.mutedLabel || ""}
+                    disabled={readonly}
+                    onChange={(event) =>
+                      updateDraft((next) => {
+                        next.projects.flagship.mutedLabel = event.target.value;
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+              </Panel>
+
+              <SingleVideoAssetEditor
+                title="Видео /projects"
+                subtitle="Отдельный ролик страницы проектов. Можно загрузить новый файл без замены видео на главной."
+                value={draft.projects?.flagship?.videoSrc || ""}
+                readonly={editLocked}
+                localPreviewMap={localImagePreviews}
+                onPickPreview={rememberImagePreview}
+                onUploadFile={handleUploadFile}
+                uploadFolder="projects"
+                previewKey="projectsVideo"
+                onChange={(nextValue) =>
+                  updateDraft((next) => {
+                    next.projects.flagship.videoSrc = nextValue;
+                    return next;
+                  })
+                }
+              />
+
+              <MetricsListEditor
+                title="Статистика МедиаСтанции"
+                subtitle="Эти показатели выводятся и на главной, и на странице проектов"
+                items={draft.home.mediaStation.stats || []}
+                readonly={readonly}
+                idPrefix="project-ms-stat"
+                onChange={(nextItems) =>
+                  updateDraft((next) => {
+                    next.home.mediaStation.stats = nextItems;
+                    return next;
+                  })
+                }
+              />
+
+              <MetricsListEditor
+                title="Дополнительные показатели /projects"
+                subtitle="Отдельные метрики страницы проектов"
+                items={draft.projects?.flagship?.extraStats || []}
+                readonly={readonly}
+                idPrefix="project-extra-stat"
+                onChange={(nextItems) =>
+                  updateDraft((next) => {
+                    next.projects.flagship.extraStats = nextItems;
+                    return next;
+                  })
+                }
+              />
+
+              <TitleTextListEditor
+                title="Другие проекты"
+                subtitle="Карточки полного перечня"
+                items={draft.projects?.otherProjects || []}
+                readonly={readonly}
+                idPrefix="project-card"
+                titleLabel="Название проекта"
+                textLabel="Подпись"
+                textKey="subtitle"
+                onChange={(nextItems) =>
+                  updateDraft((next) => {
+                    next.projects.otherProjects = nextItems;
+                    return next;
+                  })
+                }
+              />
             </div>
           ) : null}
 
@@ -3789,6 +4762,10 @@ export default function AdminApp() {
                         <ModalBodyEditor
                           entry={entry}
                           readonly={readonly}
+                          localPreviewMap={localImagePreviews}
+                          onPickPreview={rememberImagePreview}
+                          onUploadFile={handleUploadFile}
+                          onDeleteFile={handleDeleteFile}
                           onChange={(nextBodyHtml) =>
                             updateDraft((next) => {
                               const idx = next.modals.findIndex((modalEntry) => modalEntry.id === entry.id);

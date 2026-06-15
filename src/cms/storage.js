@@ -240,6 +240,313 @@ function normalizeHomeMediaSources(content) {
   return changed;
 }
 
+function normalizeFormatsModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultFormatsEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "formats")
+    : null;
+
+  if (!defaultFormatsEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "formats") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    const cleanedBodyHtml = rawBodyHtml
+      .replace(/<p class=["']formats-modal-kicker["'][^>]*>[\s\S]*?<\/p>\s*/i, "")
+      .replace(/<p class=["']section-kicker["'][^>]*>\s*Форматы работы\s*<\/p>\s*/i, "");
+    const isLegacyBody = rawBodyHtml.includes("format-cards") && !rawBodyHtml.includes("format-showcase");
+    const isLegacyTitle = String(entry.title || "").trim() === "Форматы работы";
+    const needsKickerCleanup = cleanedBodyHtml !== rawBodyHtml;
+
+    if (!isLegacyBody && !isLegacyTitle && !needsKickerCleanup) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      title: isLegacyTitle ? defaultFormatsEntry.title : entry.title,
+      bodyHtml: isLegacyBody ? defaultFormatsEntry.bodyHtml : cleanedBodyHtml
+    };
+  });
+
+  return changed;
+}
+
+function normalizeMethodologyModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultMethodologyEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "methodology")
+    : null;
+
+  if (!defaultMethodologyEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "methodology") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    const needsBodyUpgrade =
+      !rawBodyHtml.includes("Диагностика системы") ||
+      rawBodyHtml.includes("Пересборка контуров взаимодействия") ||
+      rawBodyHtml.includes("Единый язык команды") ||
+      rawBodyHtml.includes("Фиксация результата");
+
+    if (!needsBodyUpgrade) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      bodyHtml: defaultMethodologyEntry.bodyHtml
+    };
+  });
+
+  return changed;
+}
+
+function normalizeHomeIksActions(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const iks = content.home.iks;
+  if (!iks || typeof iks !== "object") {
+    return false;
+  }
+
+  const currentList = Array.isArray(iks.actions) ? iks.actions : [];
+  const nextList = cloneDeep(DEFAULT_CONTENT.home.iks.actions || []);
+  const titles = currentList.map((item) => String(item?.label || "").trim());
+  const targets = currentList.map((item) => String(item?.target || "").trim());
+  const isLegacyList =
+    currentList.length === 3 &&
+    ((titles[0] === "Что такое алмаз" && titles[1] === "Суверенитет РФ" && titles[2] === "Форматы работы") ||
+      (targets[0] === "diamond" && targets[1] === "sovereignty" && targets[2] === "formats"));
+
+  if (!currentList.length || isLegacyList) {
+    iks.actions = nextList;
+    return true;
+  }
+
+  return false;
+}
+
+function normalizeHomeIksPillars(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const iks = content.home.iks;
+  if (!iks || typeof iks !== "object" || !Array.isArray(iks.pillars)) {
+    return false;
+  }
+
+  const titleMap = new Map([
+    ["организация", "Организация и процессы"],
+    ["организация и процессы", "Организация и процессы"],
+    ["компетенции", "Компетенции и роли"],
+    ["компетенции и роли", "Компетенции и роли"],
+    ["контент", "Контент и производство"],
+    ["контент и производство", "Контент и производство"],
+    ["охват", "Охват и каналы"],
+    ["охват и каналы", "Охват и каналы"]
+  ]);
+
+  let changed = false;
+  iks.pillars = iks.pillars.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      return item;
+    }
+
+    const fallback = DEFAULT_CONTENT.home.iks.pillars[index];
+    const sourceTitle = String(item.title || item.key || "").trim().toLowerCase();
+    const normalizedTitle = titleMap.get(sourceTitle) || fallback?.title || item.title || item.key;
+    const normalizedKey = titleMap.get(sourceTitle) || fallback?.key || item.key || normalizedTitle;
+
+    if (item.title === normalizedTitle && item.key === normalizedKey) {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      title: normalizedTitle,
+      key: normalizedKey
+    };
+  });
+
+  return changed;
+}
+
+function normalizeHomeExpertHeading(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const expert = content.home.expert;
+  if (!expert || typeof expert !== "object") {
+    return false;
+  }
+
+  if (String(expert.kicker || "").trim() === "Наши эксперты") {
+    return false;
+  }
+
+  expert.kicker = "Наши эксперты";
+  return true;
+}
+
+function normalizeMediaStationReviewsModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultReviewsEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "ms-participants")
+    : null;
+
+  if (!defaultReviewsEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "ms-participants") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    const cleanedBodyHtml = rawBodyHtml.replace(
+      /<div class=["']modal-review-media["'][^>]*>\s*<img[^>]*src=["']\/assets\/reviews\/[^"']+\.svg["'][^>]*>\s*<\/div>\s*/gi,
+      ""
+    );
+    const mediaUpgradedBodyHtml = cleanedBodyHtml.replace(
+      /<article class=["']modal-review-card["']>([\s\S]*?)<\/article>/gi,
+      (match, innerHtml) => {
+        if (/modal-review-media/i.test(match)) {
+          return match;
+        }
+        const rawName = String(innerHtml.match(/<h4>([\s\S]*?)<\/h4>/i)?.[1] || "")
+          .replace(/<[^>]+>/g, " ")
+          .trim();
+        const initials = rawName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part.charAt(0).toUpperCase())
+          .join("") || "Фото";
+        return `<article class="modal-review-card"><div class="modal-review-media"><div class="modal-review-avatar-empty" aria-hidden="true">${initials}</div></div>${innerHtml}</article>`;
+      }
+    );
+    const rawTitle = String(entry.title || "").trim();
+    const needsBodyUpgrade = !rawBodyHtml.includes("modal-review-card");
+    const needsPlaceholderCleanup = cleanedBodyHtml !== rawBodyHtml;
+    const needsMediaUpgrade = mediaUpgradedBodyHtml !== cleanedBodyHtml;
+    const needsTitleUpgrade = rawTitle === "Участники о проекте" || rawTitle === "Отзывы участников";
+
+    if (!needsBodyUpgrade && !needsTitleUpgrade && !needsPlaceholderCleanup && !needsMediaUpgrade) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      title: needsTitleUpgrade ? defaultReviewsEntry.title : entry.title,
+      bodyHtml: needsBodyUpgrade ? defaultReviewsEntry.bodyHtml : mediaUpgradedBodyHtml
+    };
+  });
+
+  return changed;
+}
+
+function normalizeTeamModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultTeamEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "team")
+    : null;
+
+  if (!defaultTeamEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "team") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    if (rawBodyHtml.includes("team-card-media")) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      title: defaultTeamEntry.title,
+      bodyHtml: defaultTeamEntry.bodyHtml
+    };
+  });
+
+  return changed;
+}
+
+function normalizeAwardsModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultAwardsEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "awards")
+    : null;
+
+  if (!defaultAwardsEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "awards") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    if (rawBodyHtml.includes("awards-sheet")) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      title: defaultAwardsEntry.title,
+      bodyHtml: defaultAwardsEntry.bodyHtml
+    };
+  });
+
+  return changed;
+}
+
 function normalizeModals(content) {
   if (!content || typeof content !== "object") {
     return false;
@@ -291,9 +598,9 @@ function normalizeActionLimits(content) {
 
   const limits = [
     ["hero", "actions", 3],
-    ["mediaStation", "actions", 3],
-    ["iks", "actions", 3],
-    ["expert", "actions", 3]
+    ["mediaStation", "actions", 1],
+    ["iks", "actions", 2],
+    ["expert", "actions", 2]
   ];
 
   let changed = false;
@@ -307,6 +614,66 @@ function normalizeActionLimits(content) {
       changed = true;
     }
   });
+
+  return changed;
+}
+
+function normalizeMediaStationActions(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const media = content.home.mediaStation;
+  if (!media || typeof media !== "object") {
+    return false;
+  }
+
+  const currentList = Array.isArray(media.actions) ? media.actions : [];
+  const nextAction = {
+    id: currentList[0]?.id || "ms-action-1",
+    label: "Отзывы о МедиаСтанции",
+    type: "modal",
+    target: "ms-participants",
+    variant: "primary",
+    isPublished: true
+  };
+
+  const changed =
+    currentList.length !== 1 ||
+    JSON.stringify(currentList[0] || null) !== JSON.stringify(nextAction);
+
+  if (changed) {
+    media.actions = [nextAction];
+  }
+
+  return changed;
+}
+
+function normalizeProjectRoutingAndStats(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  let changed = false;
+
+  const commonCta = content.home.common && content.home.common.cta;
+  if (commonCta && typeof commonCta === "object" && String(commonCta.primaryTarget || "").trim() === "/projects") {
+    commonCta.primaryTarget = "#ms";
+    changed = true;
+  }
+
+  const mediaStats =
+    content.home.mediaStation && Array.isArray(content.home.mediaStation.stats)
+      ? content.home.mediaStation.stats
+      : null;
+  if (mediaStats && mediaStats[0] && mediaStats[0].label === "участников" && String(mediaStats[0].value || "").trim() === "996") {
+    mediaStats[0].value = "969";
+    changed = true;
+  }
+  if (mediaStats && mediaStats[4] && mediaStats[4].label === "медиапродуктов" && String(mediaStats[4].value || "").trim() === "5200") {
+    mediaStats[4].value = "5 200";
+    changed = true;
+  }
 
   return changed;
 }
@@ -362,6 +729,26 @@ function normalizeState(parsed) {
   normalizeHomeMediaSources(merged.published);
   normalizeModals(merged.draft);
   normalizeModals(merged.published);
+  normalizeFormatsModal(merged.draft);
+  normalizeFormatsModal(merged.published);
+  normalizeMethodologyModal(merged.draft);
+  normalizeMethodologyModal(merged.published);
+  normalizeMediaStationReviewsModal(merged.draft);
+  normalizeMediaStationReviewsModal(merged.published);
+  normalizeTeamModal(merged.draft);
+  normalizeTeamModal(merged.published);
+  normalizeAwardsModal(merged.draft);
+  normalizeAwardsModal(merged.published);
+  normalizeMediaStationActions(merged.draft);
+  normalizeMediaStationActions(merged.published);
+  normalizeProjectRoutingAndStats(merged.draft);
+  normalizeProjectRoutingAndStats(merged.published);
+  normalizeHomeIksActions(merged.draft);
+  normalizeHomeIksActions(merged.published);
+  normalizeHomeIksPillars(merged.draft);
+  normalizeHomeIksPillars(merged.published);
+  normalizeHomeExpertHeading(merged.draft);
+  normalizeHomeExpertHeading(merged.published);
   normalizeActionLimits(merged.draft);
   normalizeActionLimits(merged.published);
 
@@ -524,7 +911,22 @@ export async function fetchPublishedContentFromServer() {
     if (!content || typeof content !== "object") {
       return null;
     }
-    return mergeWithDefaults(DEFAULT_CONTENT, content);
+    const merged = mergeWithDefaults(DEFAULT_CONTENT, content);
+    normalizeAboutDocuments(merged);
+    normalizeHomeMediaSources(merged);
+    normalizeModals(merged);
+    normalizeFormatsModal(merged);
+    normalizeMethodologyModal(merged);
+    normalizeMediaStationReviewsModal(merged);
+    normalizeTeamModal(merged);
+    normalizeAwardsModal(merged);
+    normalizeMediaStationActions(merged);
+    normalizeProjectRoutingAndStats(merged);
+    normalizeHomeIksActions(merged);
+    normalizeHomeIksPillars(merged);
+    normalizeHomeExpertHeading(merged);
+    normalizeActionLimits(merged);
+    return merged;
   } catch {
     return null;
   }
@@ -592,6 +994,14 @@ export async function publishDraft(userId) {
   normalizeAboutDocuments(state.published);
   normalizeHomeMediaSources(state.published);
   normalizeModals(state.published);
+  normalizeFormatsModal(state.published);
+  normalizeMediaStationReviewsModal(state.published);
+  normalizeTeamModal(state.published);
+  normalizeAwardsModal(state.published);
+  normalizeMediaStationActions(state.published);
+  normalizeProjectRoutingAndStats(state.published);
+  normalizeHomeIksPillars(state.published);
+  normalizeHomeExpertHeading(state.published);
   normalizeActionLimits(state.published);
   state.publishedAt = nowIso();
   state.updatedAt = nowIso();
@@ -643,7 +1053,9 @@ function normalizeVersionsList(rawList) {
   if (!Array.isArray(rawList)) {
     return [];
   }
-  return rawList.map(normalizeVersionEntry).filter((item) => item && item.id);
+  return rawList
+    .map(normalizeVersionEntry)
+    .filter((item) => item && item.id && String(item.trigger || "").trim().toLowerCase() === "publish");
 }
 
 export async function fetchVersions() {
@@ -742,6 +1154,14 @@ export function saveDraft(mutator) {
   normalizeAboutDocuments(state.draft);
   normalizeHomeMediaSources(state.draft);
   normalizeModals(state.draft);
+  normalizeFormatsModal(state.draft);
+  normalizeMediaStationReviewsModal(state.draft);
+  normalizeTeamModal(state.draft);
+  normalizeAwardsModal(state.draft);
+  normalizeMediaStationActions(state.draft);
+  normalizeProjectRoutingAndStats(state.draft);
+  normalizeHomeIksPillars(state.draft);
+  normalizeHomeExpertHeading(state.draft);
   normalizeActionLimits(state.draft);
   state.updatedAt = nowIso();
   saveCmsState(state);

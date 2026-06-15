@@ -9,9 +9,10 @@ MP4_BACKUP="/tmp/gimn-ed-zy9mar.mp4.bak"
 
 cd "$APP_DIR"
 
+git fetch origin main
 git checkout main
-git pull --ff-only origin main
-npm install
+git reset --hard origin/main
+npm ci
 npm run build
 
 mkdir -p "$WEB_ROOT/assets"

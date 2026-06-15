@@ -30,11 +30,11 @@ const homeMarkup = String.raw`
       <button class="icon-btn" id="menuClose" aria-label="Закрыть меню">×</button>
     </div>
     <nav class="drawer-nav">
-      <button data-scroll="#hero">Об институте</button>
-      <button data-modal="test">Тест</button>
-      <button data-scroll="#ms">Наши проекты</button>
-      <button data-scroll="#iks">Методология</button>
-      <button data-scroll="#expert">Наши эксперты</button>
+      <a href="/">Главная страница</a>
+      <a href="/test">Тест</a>
+      <a href="#ms" data-scroll="#ms">Наши проекты</a>
+      <a href="/?modal=formats" data-modal="formats">Форматы работы</a>
+      <a href="#expert" data-scroll="#expert">Наши эксперты</a>
       <button data-scroll="#contacts">Контакты</button>
       <a href="/about">Сведения об организации</a>
     </nav>
@@ -66,16 +66,6 @@ const homeMarkup = String.raw`
           <p class="hero-kicker">Институт «АртКомм»</p>
           <h1>Повышаем управляемость команд через коммуникации</h1>
           <p class="hero-quote">«Проблема не в людях, а в связях между ними»</p>
-          <div class="hero-actions">
-            <button class="btn btn-primary" data-scroll="#commin">Пройти тест</button>
-            <button class="btn btn-secondary" data-scroll="#ms">О проектах</button>
-            <button class="btn btn-secondary" data-scroll="#contacts">Обсудить сессию</button>
-          </div>
-          <ul class="trust-line">
-            <li><strong>20+ лет</strong><span>практики</span></li>
-            <li><strong>40+ городов</strong><span>в проектах</span></li>
-            <li><strong>1000+ участников</strong><span>управленческих команд</span></li>
-          </ul>
         </div>
       </div>
 
@@ -151,10 +141,6 @@ const homeMarkup = String.raw`
                   <span>и соберём рабочую архитектуру взаимодействия.</span>
                 </p>
               </div>
-              <div class="stack-actions">
-                <button class="btn btn-primary" data-scroll="#ms">Подробнее о проектах</button>
-                <button class="btn btn-secondary" data-scroll="#contacts">Обсудить сессию</button>
-              </div>
               <div class="common-cta-men" id="commonCtaMen" aria-hidden="true">
                 <img src="/assets/Group.svg" alt="">
               </div>
@@ -173,16 +159,16 @@ const homeMarkup = String.raw`
 
       <div class="ms-pin-shell" id="msPinShell">
         <article class="ms-video-stage" id="videoWrap">
-          <video id="msVideo" playsinline webkit-playsinline muted loop autoplay preload="metadata" poster="" aria-label="Видео о формате МедиаСтанции">
+          <div class="ms-video-toolbar">
+            <span>Видео проекта</span>
+            <button class="btn btn-secondary ms-sound-toggle" id="msSoundToggle" type="button">Включить звук</button>
+          </div>
+          <video id="msVideo" playsinline webkit-playsinline muted loop autoplay preload="metadata" poster="/assets/ms-video-poster.jpg" aria-label="Видео о формате МедиаСтанции">
             <source data-src="/assets/gimn-ed-zy9mar.mp4" data-local-src="/assets/gimn-ed-zy9mar.mp4" data-fallback-src="/assets/gimn-ed-zy9mar.mp4" type="video/mp4">
           </video>
           <div class="video-placeholder" id="videoPlaceholder">
             <button class="play-btn" id="videoPlay" aria-label="Запустить видео">▶</button>
             <p>Нажмите Play, если автозапуск не сработал.</p>
-          </div>
-          <div class="ms-video-headline" id="msVideoHeadline" aria-hidden="true">
-            <span>Флагманский проект</span>
-            <strong>«МедиаСтанция»</strong>
           </div>
           <p class="ms-video-caption">«Сенсация» — о форматах работы, от онлайна к офлайну.</p>
         </article>
@@ -201,7 +187,7 @@ const homeMarkup = String.raw`
           </div>
 
           <div class="ms-stats-list">
-            <article><strong data-counter="996">996</strong><span>участников</span></article>
+            <article><strong data-counter="969">969</strong><span>участников</span></article>
             <article><strong data-counter="30">30</strong><span>городов</span></article>
             <article><strong data-counter="11">11</strong><span>часовых поясов</span></article>
             <article><strong data-counter="20" data-suffix=" млн">20 млн</strong><span>просмотров</span></article>
@@ -278,9 +264,7 @@ const homeMarkup = String.raw`
 
         <div class="ms-tail-minimal" data-reveal>
           <div class="stack-actions horizontal iks-actions ms-tail-actions">
-            <button class="btn btn-primary" data-modal="ms-results">Результаты проекта</button>
-            <button class="btn btn-secondary" data-modal="ms-participants">Отзывы участников</button>
-            <button class="btn btn-secondary" data-modal="ms-minister">Комментарий замминистра</button>
+            <button class="btn btn-primary" data-modal="ms-participants">Отзывы о МедиаСтанции</button>
           </div>
         </div>
       </div>
@@ -297,31 +281,27 @@ const homeMarkup = String.raw`
         <div class="iks-reset-stage">
           <article class="iks-reset-axis" data-reveal>
             <ul class="iks-axis-list iks-pillars">
-              <li data-key="Организация" tabindex="0">
-                <span class="iks-pill-icon" aria-hidden="true"></span>
+              <li data-key="Организация и процессы" tabindex="0">
                 <div>
-                  <strong>Организация</strong>
+                  <strong>Организация и процессы</strong>
                   <p>Насколько чётко распределены процессы, ответственность и ритм решений.</p>
                 </div>
               </li>
-              <li data-key="Компетенции" tabindex="0">
-                <span class="iks-pill-icon" aria-hidden="true"></span>
+              <li data-key="Компетенции и роли" tabindex="0">
                 <div>
-                  <strong>Компетенции</strong>
+                  <strong>Компетенции и роли</strong>
                   <p>Готовность ролей к диалогу, фасилитации и управлению сложными стыками.</p>
                 </div>
               </li>
-              <li data-key="Контент" tabindex="0">
-                <span class="iks-pill-icon" aria-hidden="true"></span>
+              <li data-key="Контент и производство" tabindex="0">
                 <div>
-                  <strong>Контент</strong>
+                  <strong>Контент и производство</strong>
                   <p>Качество смыслов и единый язык, который доходит до исполнения.</p>
                 </div>
               </li>
-              <li data-key="Охват" tabindex="0">
-                <span class="iks-pill-icon" aria-hidden="true"></span>
+              <li data-key="Охват и каналы" tabindex="0">
                 <div>
-                  <strong>Охват</strong>
+                  <strong>Охват и каналы</strong>
                   <p>Плотность каналов и глубина включения команды в общий контур коммуникаций.</p>
                 </div>
               </li>
@@ -342,9 +322,8 @@ const homeMarkup = String.raw`
         </div>
 
         <div class="stack-actions horizontal iks-actions" data-reveal>
-          <button class="btn btn-primary" data-modal="diamond">Что такое алмаз</button>
-          <button class="btn btn-secondary" data-modal="sovereignty">Суверенитет РФ</button>
-          <button class="btn btn-secondary" data-modal="formats">Форматы работы</button>
+          <a class="btn btn-primary" href="/?modal=formats" data-modal="formats">Форматы работы</a>
+          <a class="btn btn-secondary" href="/?modal=methodology" data-modal="methodology">Узнать методологию</a>
         </div>
       </div>
     </section>
@@ -382,7 +361,7 @@ const homeMarkup = String.raw`
 
         <article class="expert-reset-content" data-reveal>
           <div class="expert-copy-core">
-            <p class="section-kicker">Кто ведёт сессию</p>
+            <p class="section-kicker">Наши эксперты</p>
             <h2>Роман Скудняков</h2>
             <p class="expert-lead-quote">«Управляемость команды начинается с того, как она разговаривает и как принимает решения».</p>
             <p class="expert-brief">Стратегический коммуникатор и модератор управленческих команд в сложных распределённых структурах.</p>
@@ -394,19 +373,9 @@ const homeMarkup = String.raw`
             </ul>
           </div>
 
-          <div class="expert-impact">
-            <article class="expert-impact-item expert-impact-item-primary">
-              <span class="expert-impact-badge"><strong>20+</strong></span>
-              <p>лет</p>
-            </article>
-            <article class="expert-impact-item expert-impact-item-outline">
-              <strong>1000+ проектов</strong>
-            </article>
-          </div>
-
           <div class="stack-actions horizontal expert-actions">
-            <button class="btn btn-primary" data-modal="achievements">Факты и достижения</button>
-            <button class="btn btn-secondary" data-modal="team">Команда Арткомм</button>
+            <button class="btn btn-primary" data-modal="team">Команда Арткомм</button>
+            <button class="btn btn-secondary" data-modal="awards">Профессиональные награды</button>
           </div>
         </article>
       </div>
@@ -436,6 +405,7 @@ const homeMarkup = String.raw`
           <article class="contacts-info-card" data-reveal>
             <article class="trusted-network-card is-standalone">
               <h3>Нам доверяют</h3>
+              <p class="trusted-network-sub">Работаем более чем в 40 городах — от распределённых команд до отраслевых управленческих контуров.</p>
 
               <div class="trusted-network" id="trustedNetwork" aria-label="Партнёрская сеть">
                 <canvas class="trusted-network-canvas" id="trustedNetworkCanvas" aria-hidden="true"></canvas>
@@ -546,9 +516,9 @@ const homeMarkup = String.raw`
             <nav class="footer-links" aria-label="Навигация по сайту">
               <a href="#hero" data-scroll="#hero">Главный экран</a>
               <a href="#common" data-scroll="#common">Проблематика</a>
-              <a href="#ms" data-scroll="#ms">МедиаСтанция</a>
+              <a href="#ms" data-scroll="#ms">Наши проекты</a>
               <a href="#iks" data-scroll="#iks">Методология</a>
-              <a href="#expert" data-scroll="#expert">Эксперт</a>
+              <a href="#expert" data-scroll="#expert">Наши эксперты</a>
               <a href="#contacts" data-scroll="#contacts">Обратная связь</a>
             </nav>
           </section>
@@ -565,51 +535,47 @@ const homeMarkup = String.raw`
   <div class="modal-layer" id="modalLayer" aria-hidden="true">
     <div class="modal-overlay" id="modalOverlay"></div>
 
-    <article class="modal" data-modal-id="test" role="dialog" aria-modal="true" aria-labelledby="testTitle" hidden>
-      <button class="modal-close" aria-label="Закрыть">×</button>
-      <h3 id="testTitle">Тест на проблематику</h3>
-      <div class="test-progress"><i id="testProgressBar"></i></div>
-      <div id="testQuestionWrap"></div>
-      <div class="test-actions">
-        <button class="btn btn-secondary" id="testBack" disabled>Назад</button>
-        <button class="btn btn-primary" id="testNext" disabled>Далее</button>
-      </div>
-      <div id="testResult" hidden></div>
-    </article>
-
-    <article class="modal" data-modal-id="ms-results" role="dialog" aria-modal="true" aria-labelledby="msResultsTitle" hidden>
-      <button class="modal-close" aria-label="Закрыть">×</button>
-      <h3 id="msResultsTitle">Результаты МедиаСтанции</h3>
-      <div class="modal-grid numbers-12">
-        <span>996 участников</span><span>30 городов</span><span>11 часовых поясов</span><span>20 млн просмотров</span>
-        <span>5200 медиапродуктов</span><span>76,9% вовлечённости</span><span>82% амбассадоры</span><span>86% уверенность</span>
-        <span>92% рост связей</span><span>93% быстрее договорённости</span><span>95% проще решать</span><span>96% командность</span>
-      </div>
-      <div class="bars modal-bars">
-        <div class="bar-item"><span>Лояльность</span><strong>86%</strong><div class="bar"><i data-value="86"></i></div></div>
-        <div class="bar-item"><span>Инициативность</span><strong>90%</strong><div class="bar"><i data-value="90"></i></div></div>
-        <div class="bar-item"><span>Синхронность</span><strong>96%</strong><div class="bar"><i data-value="96"></i></div></div>
-      </div>
-    </article>
-
     <article class="modal" data-modal-id="ms-participants" role="dialog" aria-modal="true" aria-labelledby="msParticipantsTitle" hidden>
       <button class="modal-close" aria-label="Закрыть">×</button>
-      <h3 id="msParticipantsTitle">Участники о проекте</h3>
-      <blockquote>«Я увидела, как командные договорённости становятся реальными действиями уже в первые недели.» — Елена Светлова, Озёрск</blockquote>
-      <blockquote>«Проект дал нам язык, на котором можно обсуждать сложные задачи без конфликтов.» — Ульяна Реброва, Полярные Зори</blockquote>
-    </article>
-
-    <article class="modal" data-modal-id="ms-minister" role="dialog" aria-modal="true" aria-labelledby="msMinisterTitle" hidden>
-      <button class="modal-close" aria-label="Закрыть">×</button>
-      <h3 id="msMinisterTitle">Комментарий замминистра науки РФ</h3>
-      <p>«Формат МедиаСтанции показал, что работа с коммуникациями напрямую влияет на скорость реализации решений и качество командного взаимодействия.»</p>
-      <p class="modal-note">Ольга Петрова, заместитель министра науки РФ</p>
+      <h3 id="msParticipantsTitle">Отзывы о МедиаСтанции</h3>
+      <div class="modal-review-list">
+        <article class="modal-review-card">
+          <div class="modal-review-media">
+            <div class="modal-review-avatar-empty" aria-hidden="true">ОП</div>
+          </div>
+          <div class="modal-review-copy">
+            <h4>Ольга Петрова</h4>
+            <p class="modal-review-meta">Заместитель министра науки РФ</p>
+            <p class="modal-review-text">«Формат МедиаСтанции показал, что работа с коммуникациями напрямую влияет на скорость реализации решений и качество командного взаимодействия.»</p>
+          </div>
+        </article>
+        <article class="modal-review-card">
+          <div class="modal-review-media">
+            <div class="modal-review-avatar-empty" aria-hidden="true">ЕС</div>
+          </div>
+          <div class="modal-review-copy">
+            <h4>Елена Светлова</h4>
+            <p class="modal-review-meta">Озёрск</p>
+            <p class="modal-review-text">«Я увидела, как командные договорённости становятся реальными действиями уже в первые недели.»</p>
+          </div>
+        </article>
+        <article class="modal-review-card">
+          <div class="modal-review-media">
+            <div class="modal-review-avatar-empty" aria-hidden="true">УР</div>
+          </div>
+          <div class="modal-review-copy">
+            <h4>Ульяна Реброва</h4>
+            <p class="modal-review-meta">Полярные Зори</p>
+            <p class="modal-review-text">«Проект дал нам язык, на котором можно обсуждать сложные задачи без конфликтов.»</p>
+          </div>
+        </article>
+      </div>
     </article>
 
     <article class="modal" data-modal-id="diamond" role="dialog" aria-modal="true" aria-labelledby="diamondTitle" hidden>
       <button class="modal-close" aria-label="Закрыть">×</button>
       <h3 id="diamondTitle">Коммуникационный алмаз</h3>
-      <p>Алмаз показывает состояние системы по четырём осям: организация, компетенции, контент и охват. ИКС рассчитывается как суммарная оценка показателей: <strong>ИКС = ∑P[j]</strong>.</p>
+      <p>Алмаз показывает состояние системы по четырём осям: организация и процессы, компетенции и роли, контент и производство, охват и каналы. ИКС рассчитывается как суммарная оценка показателей: <strong>ИКС = ∑P[j]</strong>.</p>
       <p>Сравнение линии города со средним значением позволяет увидеть сильные стороны и зоны развития.</p>
     </article>
 
@@ -627,22 +593,74 @@ const homeMarkup = String.raw`
 
     <article class="modal" data-modal-id="formats" role="dialog" aria-modal="true" aria-labelledby="formatsTitle" hidden>
       <button class="modal-close" aria-label="Закрыть">×</button>
-      <h3 id="formatsTitle">Форматы работы</h3>
-      <div class="modal-grid format-cards">
-        <article>
-          <h4>Управленческая сессия</h4>
-          <p>2–4 часа</p>
-          <p class="tags">#диагностика #синхронизация #решения</p>
+      <h3 id="formatsTitle">Три формата — под любую задачу</h3>
+      <p class="formats-modal-lead">Выбирайте глубину погружения: от одной сессии до системной трансформации на год</p>
+      <div class="modal-grid format-showcase">
+        <article class="format-showcase-card">
+          <div class="format-showcase-top">
+            <span class="format-showcase-index">01</span>
+            <span class="format-showcase-duration">2–4 часа</span>
+          </div>
+          <div class="format-showcase-body">
+            <h4>Управленческая сессия</h4>
+            <p class="format-showcase-text">Практическая сессия для команды или руководителя. Работаем с конкретными задачами прямо в зале.</p>
+            <div class="format-showcase-group">
+              <span class="format-showcase-label">Внутри формата</span>
+              <ul class="format-showcase-features">
+                <li>Управление влиянием</li>
+                <li>Управление командой</li>
+                <li>Влияние руководителя</li>
+              </ul>
+            </div>
+            <div class="format-showcase-result">
+              <span class="format-showcase-label">Результат</span>
+              <p>Команда уходит с готовыми инструментами и договорённостями. Эффект — уже на следующий день.</p>
+            </div>
+          </div>
         </article>
-        <article>
-          <h4>Форсайт-сессия</h4>
-          <p>1–2 дня</p>
-          <p class="tags">#сценарии #стратегия #приоритеты</p>
+        <article class="format-showcase-card">
+          <div class="format-showcase-top">
+            <span class="format-showcase-index">02</span>
+            <span class="format-showcase-duration">1–2 дня</span>
+          </div>
+          <div class="format-showcase-body">
+            <h4>Проектная форсайт-сессия</h4>
+            <p class="format-showcase-text">Стратегическая работа с командой по методологии Rapid Foresight. Переводим идеи в системные проекты.</p>
+            <div class="format-showcase-group">
+              <span class="format-showcase-label">Внутри формата</span>
+              <ul class="format-showcase-features">
+                <li>Управление идеями</li>
+                <li>Пересборка взаимодействия</li>
+                <li>Стратегическое планирование</li>
+              </ul>
+            </div>
+            <div class="format-showcase-result">
+              <span class="format-showcase-label">Результат</span>
+              <p>Из разрозненных идей — конкретные проекты с командами, дорожными картами и ответственными.</p>
+            </div>
+          </div>
         </article>
-        <article>
-          <h4>Акселерация</h4>
-          <p>1–12 месяцев</p>
-          <p class="tags">#внедрение #сопровождение #ростИКС</p>
+        <article class="format-showcase-card">
+          <div class="format-showcase-top">
+            <span class="format-showcase-index">03</span>
+            <span class="format-showcase-duration">1–12 месяцев</span>
+          </div>
+          <div class="format-showcase-body">
+            <h4>Акселерация управления</h4>
+            <p class="format-showcase-text">Системная трансформация коммуникаций внутри организации. Измеримый рост управляемости.</p>
+            <div class="format-showcase-group">
+              <span class="format-showcase-label">Внутри формата</span>
+              <ul class="format-showcase-features">
+                <li>Управление изменениями</li>
+                <li>Диагностика системы</li>
+                <li>Единый язык команды</li>
+              </ul>
+            </div>
+            <div class="format-showcase-result">
+              <span class="format-showcase-label">Результат</span>
+              <p>Коммуникации переходят из «ощущений» в управляемую систему. Рост показателей зафиксирован и измерен.</p>
+            </div>
+          </div>
         </article>
       </div>
     </article>
@@ -663,27 +681,52 @@ const homeMarkup = String.raw`
       <button class="modal-close" aria-label="Закрыть">×</button>
       <h3 id="teamTitle">Команда Арткомм</h3>
       <div class="modal-grid team-grid">
-        <article><i>РС</i><span>Роман Скудняков</span><small>Руководитель проекта</small></article>
-        <article><i>ОР</i><span>Ольга Рыхлова</span><small>Учредитель</small></article>
-        <article><i>АМ</i><span>Анна М.</span><small>Аналитик</small></article>
-        <article><i>ДС</i><span>Дмитрий С.</span><small>Методолог</small></article>
-        <article><i>ЕК</i><span>Екатерина К.</span><small>Продюсер программ</small></article>
-        <article><i>ПЛ</i><span>Павел Л.</span><small>Фасилитатор</small></article>
-        <article><i>ЮТ</i><span>Юлия Т.</span><small>Коммуникации</small></article>
-        <article><i>МГ</i><span>Михаил Г.</span><small>Координатор</small></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">ОП</div></div><div class="team-card-copy"><span>Ольга Парле</span><small>креативный директор</small></div></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">АР</div></div><div class="team-card-copy"><span>Анна Романычева</span><small>директор по аналитике</small></div></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">АФ</div></div><div class="team-card-copy"><span>Анастасия Филимонова</span><small>операционный руководитель проектов</small></div></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">АХ</div></div><div class="team-card-copy"><span>Альрам Хайретдинов</span><small>руководитель визуальных коммуникаций</small></div></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">ТК</div></div><div class="team-card-copy"><span>Туйаара Кычкина</span><small>эксперт по наставничеству</small></div></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">ПС</div></div><div class="team-card-copy"><span>Павел Скудняков</span><small>менеджер проектов</small></div></article>
+        <article class="team-card"><div class="team-card-media"><div class="team-card-avatar-empty" aria-hidden="true">МП</div></div><div class="team-card-copy"><span>Мария Первушкина</span><small>эксперт по SMM аналитике</small></div></article>
       </div>
     </article>
 
     <article class="modal" data-modal-id="awards" role="dialog" aria-modal="true" aria-labelledby="awardsTitle" hidden>
       <button class="modal-close" aria-label="Закрыть">×</button>
       <h3 id="awardsTitle">Профессиональные награды</h3>
-      <ul>
-        <li>Серебряный лучник, 2024</li>
-        <li>Знак Росатома, 2025</li>
-        <li>Премия НН, 2022</li>
-        <li>Благодарности регионов</li>
-        <li>ТВ «Без галстука»</li>
-      </ul>
+      <div class="awards-sheet">
+        <section class="awards-block" data-section="expert">
+          <h4>Об эксперте</h4>
+          <ul class="awards-list">
+            <li>Кандидат политических наук</li>
+            <li>Лектор Российского общества «Знание»</li>
+            <li>Партнёр Мастерской управления «Сенеж»</li>
+            <li>Эксперт по коммуникационному лидерству</li>
+            <li>Архитектор управляемости команд через коммуникации</li>
+            <li>20+ лет в управлении коммуникациями: губернаторы, мэры, 31 город Росатома</li>
+            <li>Соавтор Индекса коммуникационной состоятельности, верифицированного ЦИРКОН</li>
+            <li>Автор методики развития сообществ, апробированной на 1000+ участниках в 30 городах</li>
+          </ul>
+        </section>
+        <section class="awards-block" data-section="awards">
+          <h4>Профессиональные награды</h4>
+          <ul class="awards-list">
+            <li>Победитель национальной премии «Серебряный Лучник»</li>
+            <li>Лауреат Премии Нижнего Новгорода (2022), телепроект «Без галстука» («ОТР», «Волга»)</li>
+            <li>Почётная грамота Госкорпорации «Росатом», 2023 год</li>
+            <li>Знак отличия Госкорпорации «Росатом» «За вклад в развитие атомной отрасли», II степени, 2025 год</li>
+          </ul>
+        </section>
+        <section class="awards-block" data-section="letters">
+          <h4>Благодарственные письма</h4>
+          <ul class="awards-list">
+            <li>Главы Республики Саха (Якутия) А. С. Николаева, 2023 год</li>
+            <li>Губернатора Камчатского края В. В. Солодова, 2023 год</li>
+            <li>ВРИО губернатора Чукотского автономного округа В. Г. Кузнецова, 2023 год</li>
+            <li>Губернатора Сахалинской области В. И. Лимаренко, 2022 год</li>
+          </ul>
+        </section>
+      </div>
     </article>
 
     <article class="modal" data-modal-id="achievements" role="dialog" aria-modal="true" aria-labelledby="achievementsTitle" hidden>

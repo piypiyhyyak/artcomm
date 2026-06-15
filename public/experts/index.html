@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Наши эксперты</title>
+    <meta http-equiv="refresh" content="0; url=/?page=experts" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search || "");
+        params.set("page", "experts");
+        var target = "/?" + params.toString() + (window.location.hash || "");
+        window.location.replace(target);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

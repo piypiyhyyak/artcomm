@@ -1,0 +1,8 @@
+<svg width="640" height="640" viewBox="0 0 640 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="640" rx="36" fill="#0B2A46"/>
+  <circle cx="320" cy="244" r="112" fill="#25507C"/>
+  <path d="M168 560C193 448 246 392 320 392C394 392 447 448 472 560" fill="#25507C"/>
+  <circle cx="320" cy="232" r="84" fill="#EFF4FB"/>
+  <path d="M248 330C267 297 291 280 320 280C349 280 373 297 392 330V378H248V330Z" fill="#EFF4FB"/>
+  <text x="320" y="548" fill="#EFF4FB" font-family="Manrope, Arial, sans-serif" font-size="36" font-weight="700" text-anchor="middle">Ульяна Реброва</text>
+</svg>

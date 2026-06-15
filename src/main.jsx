@@ -10,6 +10,18 @@ function detectPage() {
     return "admin";
   }
 
+  if (pathname === "/test" || page === "test") {
+    return "test";
+  }
+
+  if (pathname === "/projects" || page === "projects") {
+    return "projects";
+  }
+
+  if (pathname === "/experts" || page === "experts") {
+    return "experts";
+  }
+
   if (pathname === "/about" || pathname === "/documents" || page === "about" || page === "documents") {
     return "about";
   }
@@ -35,6 +47,24 @@ async function mountPage() {
   if (pageType === "about") {
     const { default: AboutApp } = await import("./AboutApp.jsx");
     root.render(<AboutApp />);
+    return;
+  }
+
+  if (pageType === "test") {
+    const { default: TestApp } = await import("./TestApp.jsx");
+    root.render(<TestApp />);
+    return;
+  }
+
+  if (pageType === "projects") {
+    const { default: ProjectsApp } = await import("./ProjectsApp.jsx");
+    root.render(<ProjectsApp />);
+    return;
+  }
+
+  if (pageType === "experts") {
+    const { default: ExpertsApp } = await import("./ExpertsApp.jsx");
+    root.render(<ExpertsApp />);
     return;
   }
 

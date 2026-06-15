@@ -7,6 +7,7 @@ function initAbout() {
   const menuClose = $("#menuClose");
   const menuDrawer = $("#menuDrawer");
   const drawerOverlay = $("#drawerOverlay");
+  let anchorScrollSequence = 0;
 
   if (!siteHeader || !menuToggle || !menuClose || !menuDrawer || !drawerOverlay) {
     return () => {};
@@ -50,9 +51,37 @@ function initAbout() {
       return;
     }
 
-    const headerOffset = siteHeader.offsetHeight + 8;
+    const headerOffset = siteHeader.offsetHeight;
     const y = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+    const scrollSequence = ++anchorScrollSequence;
+
     window.scrollTo({ top: y, behavior: "smooth" });
+
+    const settle = () => {
+      if (scrollSequence !== anchorScrollSequence) {
+        return;
+      }
+
+      const currentTarget = $(targetSelector);
+      if (!currentTarget) {
+        return;
+      }
+
+      const currentHeaderOffset = siteHeader.offsetHeight;
+      const delta = Math.round(currentTarget.getBoundingClientRect().top - currentHeaderOffset);
+      if (Math.abs(delta) <= 1) {
+        return;
+      }
+
+      const html = document.documentElement;
+      const previousScrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = "auto";
+      window.scrollTo({ top: window.pageYOffset + delta, behavior: "auto" });
+      html.style.scrollBehavior = previousScrollBehavior;
+    };
+
+    window.setTimeout(settle, 1600);
+    window.setTimeout(settle, 2400);
   };
 
   addListener(menuToggle, "click", () => {

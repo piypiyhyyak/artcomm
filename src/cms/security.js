@@ -19,6 +19,7 @@ const ALLOWED_HTML_TAGS = new Set([
   "ol",
   "li",
   "blockquote",
+  "img",
   "br",
   "code"
 ]);
@@ -36,7 +37,8 @@ const TAG_ATTRS = {
   li: new Set(["class"]),
   blockquote: new Set(["class"]),
   section: new Set(["class"]),
-  code: new Set(["class"])
+  code: new Set(["class"]),
+  img: new Set(["src", "alt", "loading", "decoding", "class"])
 };
 
 const SAFE_CLASS_RE = /^[a-zA-Z0-9 _-]{0,120}$/;
@@ -164,6 +166,30 @@ function copyAllowedAttributes(sourceNode, targetNode, documentRef) {
       return;
     }
 
+    if (tag === "img" && attrName === "src") {
+      const safeSrc = sanitizeSrc(attrValue);
+      if (!safeSrc) {
+        return;
+      }
+      targetNode.setAttribute("src", safeSrc);
+      return;
+    }
+
+    if (tag === "img" && attrName === "alt") {
+      targetNode.setAttribute("alt", String(attrValue || "").slice(0, 180));
+      return;
+    }
+
+    if (tag === "img" && attrName === "loading") {
+      targetNode.setAttribute("loading", attrValue === "eager" ? "eager" : "lazy");
+      return;
+    }
+
+    if (tag === "img" && attrName === "decoding") {
+      targetNode.setAttribute("decoding", attrValue === "sync" ? "sync" : "async");
+      return;
+    }
+
     targetNode.setAttribute(attrName, attrValue);
   });
 
@@ -176,6 +202,10 @@ function copyAllowedAttributes(sourceNode, targetNode, documentRef) {
       targetNode.setAttribute("target", "_blank");
       targetNode.setAttribute("rel", "noopener noreferrer");
     }
+  }
+
+  if (tag === "img" && !targetNode.getAttribute("src")) {
+    return null;
   }
 
   return targetNode;

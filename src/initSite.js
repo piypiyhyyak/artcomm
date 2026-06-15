@@ -1,4 +1,5 @@
 import diamondChartSvg from "./assets/chart.svg?raw";
+import { mountProblemTest } from "./testEngine";
 
 export default function initSite() {
   if (window.__artcommSiteInitialized) {
@@ -26,9 +27,9 @@ export default function initSite() {
   const msPinShell = $("#msPinShell");
   const videoWrap = $("#videoWrap");
   const msVideo = $("#msVideo");
+  const msSoundToggle = $("#msSoundToggle");
   const videoPlaceholder = $("#videoPlaceholder");
   const videoPlayBtn = $("#videoPlay");
-  const msVideoHeadline = $("#msVideoHeadline");
 
   const modalLayer = $("#modalLayer");
   const modalOverlay = $("#modalOverlay");
@@ -44,18 +45,13 @@ export default function initSite() {
   const expertResetMedia = $(".expert-reset-media", expertReset || document);
   const expertCopyCore = $(".expert-copy-core", expertReset || document);
   const expertBrief = $(".expert-brief", expertCopyCore || document);
+  const expertActions = $(".expert-actions", expertReset || document);
 
   const diamondChart = $("#diamondChart");
   const diamondSvgHost = $("#diamondSvgHost");
   const diamondTooltip = $("#diamondTooltip");
   const diamondReadout = $("#diamondReadout");
   const iksAxisItems = $$(".iks-axis-list li[data-key]");
-
-  const testQuestionWrap = $("#testQuestionWrap");
-  const testProgressBar = $("#testProgressBar");
-  const testNextBtn = $("#testNext");
-  const testBackBtn = $("#testBack");
-  const testResult = $("#testResult");
 
   const commonDrumStage = $("#commonDrumStage");
   const commonDrumItems = $$(".common-drum-item", commonDrumStage || document);
@@ -64,6 +60,25 @@ export default function initSite() {
   const trustedNetwork = $("#trustedNetwork");
   const trustedNetworkCanvas = $("#trustedNetworkCanvas");
   const trustedNetworkNodes = $$(".trusted-node[data-node]", trustedNetwork || document);
+  const pendingScrollStorageKey = "artcomm.pendingScrollTarget";
+  let anchorScrollSequence = 0;
+
+  function getModalRequestFromUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const modal = String(params.get("modal") || "").trim().toLowerCase();
+      const recommendation = String(params.get("recommendation") || "").trim().toLowerCase();
+      if (!/^[a-z0-9-]{1,48}$/i.test(modal)) {
+        return null;
+      }
+      return {
+        modal,
+        recommendation: /^[a-z0-9-]{1,32}$/i.test(recommendation) ? recommendation : ""
+      };
+    } catch {
+      return null;
+    }
+  }
 
   if (
     !siteHeader ||
@@ -76,12 +91,7 @@ export default function initSite() {
     !prevSlideBtn ||
     !nextSlideBtn ||
     !modalLayer ||
-    !modalOverlay ||
-    !testQuestionWrap ||
-    !testProgressBar ||
-    !testNextBtn ||
-    !testBackBtn ||
-    !testResult
+    !modalOverlay
   ) {
     return;
   }
@@ -101,6 +111,23 @@ export default function initSite() {
   let diamondChartInitialized = false;
   let trustedNetworkInitialized = false;
   let videoPlayAttemptId = 0;
+  let videoResumeTimer = 0;
+  let isMsVideoInViewport = false;
+  let preferredMsVideoMuted = true;
+  let msVideoViewportTicking = false;
+  const testApi = mountProblemTest({
+    questionWrap: $("#testQuestionWrap"),
+    progressBar: $("#testProgressBar"),
+    nextButton: $("#testNext"),
+    backButton: $("#testBack"),
+    resultNode: $("#testResult"),
+    onDiscuss: function () {
+      closeModal();
+      setTimeout(function () {
+        scrollToTarget("#contacts");
+      }, 220);
+    }
+  });
 
   function syncHeaderVisualState() {
     const shouldBeSolid =
@@ -129,9 +156,58 @@ export default function initSite() {
       return;
     }
 
-    const headerOffset = siteHeader ? siteHeader.offsetHeight + 8 : 0;
+    const headerOffset = siteHeader ? siteHeader.offsetHeight : 0;
     const y = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+    const scrollSequence = ++anchorScrollSequence;
+
     window.scrollTo({ top: y, behavior: "smooth" });
+
+    const settle = () => {
+      if (scrollSequence !== anchorScrollSequence) {
+        return;
+      }
+
+      const currentTarget = $(targetSelector);
+      if (!currentTarget) {
+        return;
+      }
+
+      const currentHeaderOffset = siteHeader ? siteHeader.offsetHeight : 0;
+      const delta = Math.round(currentTarget.getBoundingClientRect().top - currentHeaderOffset);
+      if (Math.abs(delta) <= 1) {
+        return;
+      }
+
+      const html = document.documentElement;
+      const previousScrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = "auto";
+      window.scrollTo({ top: window.pageYOffset + delta, behavior: "auto" });
+      html.style.scrollBehavior = previousScrollBehavior;
+    };
+
+    window.setTimeout(settle, 1600);
+    window.setTimeout(settle, 2400);
+  }
+
+  function applyPendingCrossPageScroll() {
+    let targetSelector = "";
+
+    try {
+      targetSelector = String(window.sessionStorage.getItem(pendingScrollStorageKey) || "");
+      if (targetSelector) {
+        window.sessionStorage.removeItem(pendingScrollStorageKey);
+      }
+    } catch {
+      return;
+    }
+
+    if (!/^#[a-z0-9_-]{1,64}$/i.test(targetSelector)) {
+      return;
+    }
+
+    setTimeout(function () {
+      scrollToTarget(targetSelector);
+    }, 160);
   }
 
   function setMenuState(open) {
@@ -180,6 +256,18 @@ export default function initSite() {
         closeModal();
       }
       scrollToTarget(target);
+    });
+  });
+
+  $$("[data-link]").forEach(function (el) {
+    el.addEventListener("click", function (event) {
+      event.preventDefault();
+      const target = el.getAttribute("data-link");
+      if (!target) {
+        return;
+      }
+      setMenuState(false);
+      window.location.href = target;
     });
   });
 
@@ -521,51 +609,9 @@ export default function initSite() {
     if (!msPinShell || !videoWrap) {
       return;
     }
-
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      videoWrap.style.setProperty("--ms-video-shift", "0px");
-      videoWrap.style.setProperty("--ms-video-scale", "1");
-      videoWrap.style.setProperty("--ms-video-radius", "0px");
-      videoWrap.classList.remove("is-label-visible");
-      if (msVideoHeadline) {
-        msVideoHeadline.setAttribute("aria-hidden", "true");
-      }
-      return;
-    }
-
-    const headerOffset = siteHeader ? siteHeader.offsetHeight : 0;
-    const viewport = window.innerHeight - headerOffset;
-    const shellHeight = msPinShell.offsetHeight;
-    const scrollRange = shellHeight - viewport;
-
-    if (scrollRange <= 0) {
-      videoWrap.style.setProperty("--ms-video-shift", "0px");
-      videoWrap.style.setProperty("--ms-video-scale", "1");
-      videoWrap.style.setProperty("--ms-video-radius", "0px");
-      videoWrap.classList.add("is-label-visible");
-      if (msVideoHeadline) {
-        msVideoHeadline.setAttribute("aria-hidden", "false");
-      }
-      return;
-    }
-
-    const shellRect = msPinShell.getBoundingClientRect();
-    const traveled = Math.min(Math.max(headerOffset - shellRect.top, 0), scrollRange);
-    const progress = traveled / scrollRange;
-    const pinPhase = Math.min(Math.max((progress - 0.06) / 0.56, 0), 1);
-    const eased = 1 - Math.pow(1 - pinPhase, 2.15);
-
-    const shift = (1 - eased) * 56;
-    const scale = 0.92 + eased * 0.08;
-    const radius = (1 - eased) * 24;
-
-    videoWrap.style.setProperty("--ms-video-shift", shift.toFixed(2) + "px");
-    videoWrap.style.setProperty("--ms-video-scale", scale.toFixed(4));
-    videoWrap.style.setProperty("--ms-video-radius", radius.toFixed(2) + "px");
-    videoWrap.classList.toggle("is-label-visible", progress > 0.5);
-    if (msVideoHeadline) {
-      msVideoHeadline.setAttribute("aria-hidden", String(!(progress > 0.5)));
-    }
+    videoWrap.style.setProperty("--ms-video-shift", "0px");
+    videoWrap.style.setProperty("--ms-video-scale", "1");
+    videoWrap.style.setProperty("--ms-video-radius", "28px");
   }
 
   function handleMsPinScroll() {
@@ -703,18 +749,46 @@ export default function initSite() {
     videoPlaceholder.setAttribute("aria-hidden", "true");
   }
 
-  function tryPlayVideo() {
+  function clearVideoResumeTimer() {
+    if (!videoResumeTimer) {
+      return;
+    }
+    window.clearTimeout(videoResumeTimer);
+    videoResumeTimer = 0;
+  }
+
+  function scheduleVideoResume(delay) {
+    if (!msVideo || !isMsVideoInViewport || document.hidden || !allowAutoVideoPlayback) {
+      return;
+    }
+
+    clearVideoResumeTimer();
+    videoResumeTimer = window.setTimeout(function () {
+      videoResumeTimer = 0;
+      tryPlayVideo({
+        preferredMuted: preferredMsVideoMuted,
+        allowMutedFallback: true
+      });
+    }, typeof delay === "number" ? delay : 120);
+  }
+
+  function tryPlayVideo(options) {
     if (!msVideo) {
       return;
     }
 
+    const settings = options || {};
     const hasSource = hydrateVideoSource(msVideo);
     if (!hasSource) {
       setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4.");
       return;
     }
 
-    msVideo.muted = true;
+    const preferredMuted =
+      typeof settings.preferredMuted === "boolean" ? settings.preferredMuted : preferredMsVideoMuted;
+    const allowMutedFallback = settings.allowMutedFallback !== false;
+
+    msVideo.muted = preferredMuted;
     msVideo.playsInline = true;
     const currentAttempt = ++videoPlayAttemptId;
     const attempt = msVideo.play();
@@ -736,14 +810,23 @@ export default function initSite() {
           return;
         }
         if (switchVideoSourceToFallback(msVideo)) {
-          tryPlayVideo();
+          scheduleVideoResume(80);
+          return;
+        }
+        if (!preferredMuted && allowMutedFallback) {
+          preferredMsVideoMuted = true;
+          msVideo.muted = true;
+          syncSoundToggleLabel();
+          tryPlayVideo({
+            preferredMuted: true,
+            allowMutedFallback: false
+          });
           return;
         }
         if (!msVideo.paused || msVideo.currentTime > 0.02) {
           hideVideoPlaceholder();
           return;
         }
-        msVideo.removeAttribute("controls");
         showVideoPlaceholder("Текущий браузер не смог автоматически воспроизвести видео.");
       });
     }
@@ -753,6 +836,7 @@ export default function initSite() {
     if (!msVideo) {
       return;
     }
+    clearVideoResumeTimer();
     msVideo.pause();
   }
 
@@ -762,9 +846,41 @@ export default function initSite() {
         setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4.");
         return;
       }
-      tryPlayVideo();
-      msVideo.setAttribute("controls", "");
+      tryPlayVideo({
+        preferredMuted: preferredMsVideoMuted,
+        allowMutedFallback: true
+      });
     });
+  }
+
+  function syncSoundToggleLabel() {
+    if (!msSoundToggle || !msVideo) {
+      return;
+    }
+    msSoundToggle.textContent = msVideo.muted ? "Включить звук" : "Выключить звук";
+  }
+
+  if (msSoundToggle && msVideo) {
+    syncSoundToggleLabel();
+    msSoundToggle.addEventListener("click", function () {
+      if (!hydrateVideoSource(msVideo)) {
+        setVideoPlaceholderMessage("Видео не найдено. Загрузите файл на сервер по пути /assets/gimn-ed-zy9mar.mp4.");
+        return;
+      }
+      msVideo.muted = !msVideo.muted;
+      preferredMsVideoMuted = msVideo.muted;
+      if (!msVideo.muted) {
+        msVideo.volume = 1;
+      }
+      syncSoundToggleLabel();
+      const attempt = msVideo.play();
+      if (attempt && typeof attempt.catch === "function") {
+        attempt.catch(function () {
+          showVideoPlaceholder("Нажмите Play, чтобы запустить видео со звуком.");
+        });
+      }
+    });
+    msVideo.addEventListener("volumechange", syncSoundToggleLabel);
   }
 
   if (msVideo) {
@@ -780,10 +896,26 @@ export default function initSite() {
     msVideo.addEventListener("loadeddata", syncVideoPlaceholderState);
     msVideo.addEventListener("canplay", syncVideoPlaceholderState);
     msVideo.addEventListener("timeupdate", syncVideoPlaceholderState);
+    msVideo.addEventListener("pause", function () {
+      if (!isMsVideoInViewport || document.hidden) {
+        return;
+      }
+      scheduleVideoResume(160);
+    });
+    msVideo.addEventListener("loadeddata", function () {
+      if (isMsVideoInViewport) {
+        scheduleVideoResume(60);
+      }
+    });
+    msVideo.addEventListener("canplay", function () {
+      if (isMsVideoInViewport) {
+        scheduleVideoResume(60);
+      }
+    });
 
     msVideo.addEventListener("error", function () {
       if (switchVideoSourceToFallback(msVideo)) {
-        tryPlayVideo();
+        scheduleVideoResume(80);
         return;
       }
       showVideoPlaceholder("Формат не поддержан браузером. Конвертируйте ролик в MP4 (H.264/AAC).");
@@ -920,23 +1052,90 @@ export default function initSite() {
     barsObserver.observe(loyaltyBars);
   }
 
-  const videoObserverThreshold =
-    typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches ? 0.25 : 0.55;
+  function getElementViewportRatio(element) {
+    if (!element) {
+      return 0;
+    }
 
-  const videoObserver = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting) {
-        if (allowAutoVideoPlayback) {
-          tryPlayVideo();
-        }
-      } else {
-        pauseVideo();
-      }
+    const rect = element.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    if (!rect.width || !rect.height || !viewportWidth || !viewportHeight) {
+      return 0;
+    }
+
+    const visibleWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
+    const visibleHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+    const visibleArea = visibleWidth * visibleHeight;
+    const totalArea = rect.width * rect.height;
+
+    if (!totalArea) {
+      return 0;
+    }
+
+    return visibleArea / totalArea;
+  }
+
+  const msVideoResumeThreshold =
+    typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches ? 0.22 : 0.48;
+  const msVideoPauseThreshold = 0.1;
+
+  function syncMsVideoViewportState() {
+    if (!videoWrap || !msVideo) {
+      return;
+    }
+
+    const visibilityRatio = getElementViewportRatio(videoWrap);
+    const shouldBeActive = !document.hidden && (
+      isMsVideoInViewport
+        ? visibilityRatio > msVideoPauseThreshold
+        : visibilityRatio >= msVideoResumeThreshold
+    );
+
+    if (!shouldBeActive) {
+      isMsVideoInViewport = false;
+      pauseVideo();
+      return;
+    }
+
+    isMsVideoInViewport = true;
+
+    if (allowAutoVideoPlayback && msVideo.paused) {
+      scheduleVideoResume(0);
+    }
+  }
+
+  function handleMsVideoViewportChange() {
+    if (msVideoViewportTicking) {
+      return;
+    }
+    msVideoViewportTicking = true;
+    requestAnimationFrame(function () {
+      msVideoViewportTicking = false;
+      syncMsVideoViewportState();
     });
-  }, { threshold: videoObserverThreshold });
+  }
 
-  if (videoWrap) {
-    videoObserver.observe(videoWrap);
+  if (videoWrap && msVideo) {
+    const msVideoViewportObserver =
+      typeof window.IntersectionObserver === "function"
+        ? new IntersectionObserver(function () {
+          handleMsVideoViewportChange();
+        }, {
+          threshold: [0, 0.1, 0.22, 0.48, 0.72, 1]
+        })
+        : null;
+
+    if (msVideoViewportObserver) {
+      msVideoViewportObserver.observe(videoWrap);
+    }
+
+    window.addEventListener("scroll", handleMsVideoViewportChange, { passive: true });
+    window.addEventListener("resize", handleMsVideoViewportChange);
+    document.addEventListener("visibilitychange", handleMsVideoViewportChange);
+    window.addEventListener("pageshow", handleMsVideoViewportChange);
+    syncMsVideoViewportState();
   }
 
   const diamondObserver = new IntersectionObserver(function (entries, observer) {
@@ -954,10 +1153,10 @@ export default function initSite() {
   }
 
   const diamondConfig = [
-    { key: "Организация", city: "2,2", avg: "1,4", cityX: 627, cityY: 319, avgX: 627, avgY: 431 },
-    { key: "Компетенции", city: "2,6", avg: "1,7", cityX: 991, cityY: 627, avgX: 865, avgY: 627 },
-    { key: "Контент", city: "1,8", avg: "1,2", cityX: 627, cityY: 879, avgX: 627, avgY: 795 },
-    { key: "Охват", city: "1,9", avg: "1,3", cityX: 361, cityY: 627, avgX: 445, avgY: 627 }
+    { key: "Организация и процессы", city: "2,2", avg: "1,4", cityX: 627, cityY: 319, avgX: 627, avgY: 431 },
+    { key: "Компетенции и роли", city: "2,6", avg: "1,7", cityX: 991, cityY: 627, avgX: 865, avgY: 627 },
+    { key: "Контент и производство", city: "1,8", avg: "1,2", cityX: 627, cityY: 879, avgX: 627, avgY: 795 },
+    { key: "Охват и каналы", city: "1,9", avg: "1,3", cityX: 361, cityY: 627, avgX: 445, avgY: 627 }
   ];
 
   function setAxisActive(key) {
@@ -1102,7 +1301,12 @@ export default function initSite() {
     });
 
     const cityShape = $("polygon[fill='#2F80ED'][fill-opacity='0.08']", svgRoot);
-    const avgShape = $("polygon[stroke='#6B7280'][stroke-dasharray='12 10']", svgRoot);
+    const avgShape = $$("polygon", svgRoot).find(function (polygon) {
+      const stroke = (polygon.getAttribute("stroke") || "").trim().toUpperCase();
+      const fill = (polygon.getAttribute("fill") || "").trim().toLowerCase();
+      const strokeWidth = Number.parseFloat(polygon.getAttribute("stroke-width") || "0");
+      return stroke === "#6B7280" && fill === "none" && Math.abs(strokeWidth - 3) < 0.2;
+    });
 
     if (cityShape) {
       cityShape.classList.add("diamond-city-shape", "diamond-animated");
@@ -1406,9 +1610,12 @@ export default function initSite() {
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
       stopExpertAutoTimer();
+      isMsVideoInViewport = false;
+      pauseVideo();
       return;
     }
     startExpertAutoTimer();
+    handleMsVideoViewportChange();
   });
 
   function initExpertGallery() {
@@ -1461,6 +1668,7 @@ export default function initSite() {
         }
       }
       expertReset.classList.add("is-mobile-flow");
+      requestAnimationFrame(syncExpertActionMarker);
       return;
     }
 
@@ -1472,15 +1680,41 @@ export default function initSite() {
       }
     }
     expertReset.classList.remove("is-mobile-flow");
+    requestAnimationFrame(syncExpertActionMarker);
+  }
+
+  function syncExpertActionMarker() {
+    if (!expertActions) {
+      return;
+    }
+
+    const buttons = $$(".btn", expertActions).filter(function (button) {
+      return button.offsetParent !== null;
+    });
+
+    if (buttons.length < 2) {
+      expertActions.style.setProperty("--expert-actions-marker-left", "50%");
+      return;
+    }
+
+    const wrapRect = expertActions.getBoundingClientRect();
+    const firstRect = buttons[0].getBoundingClientRect();
+    const secondRect = buttons[1].getBoundingClientRect();
+    const gapCenter = ((firstRect.right + secondRect.left) / 2) - wrapRect.left;
+
+    expertActions.style.setProperty("--expert-actions-marker-left", `${gapCenter}px`);
   }
 
   syncExpertMobileFlow();
+  requestAnimationFrame(syncExpertActionMarker);
 
   if (typeof expertMobileFlowQuery.addEventListener === "function") {
     expertMobileFlowQuery.addEventListener("change", syncExpertMobileFlow);
   } else if (typeof expertMobileFlowQuery.addListener === "function") {
     expertMobileFlowQuery.addListener(syncExpertMobileFlow);
   }
+
+  window.addEventListener("resize", syncExpertActionMarker);
 
   function openModal(modalId) {
     const safeModalId =
@@ -1519,11 +1753,39 @@ export default function initSite() {
     activeModal = targetModal;
     syncHeaderVisualState();
 
-    if (safeModalId === "test") {
-      initTest();
+    if (safeModalId === "test" && testApi) {
+      testApi.reset();
     }
 
     animateBars(targetModal);
+
+    if (safeModalId === "formats") {
+      const recommendation = document.body.getAttribute("data-formats-recommendation") || "";
+      const formatCards = $$(".format-showcase-card", targetModal);
+      formatCards.forEach(function (card) {
+        card.classList.remove("is-recommended");
+      });
+
+      if (recommendation) {
+        const matchedCard = formatCards.find(function (card) {
+          const title = (card.querySelector("h4")?.textContent || "").toLowerCase();
+          if (recommendation === "session") {
+            return title.indexOf("управленчес") !== -1;
+          }
+          if (recommendation === "foresight") {
+            return title.indexOf("форсайт") !== -1;
+          }
+          if (recommendation === "acceleration") {
+            return title.indexOf("акселерац") !== -1;
+          }
+          return false;
+        });
+
+        if (matchedCard) {
+          matchedCard.classList.add("is-recommended");
+        }
+      }
+    }
   }
 
   function closeModal() {
@@ -1561,6 +1823,29 @@ export default function initSite() {
 
   modalOverlay.addEventListener("click", closeModal);
 
+  const requestedModal = getModalRequestFromUrl();
+  if (requestedModal) {
+    if (requestedModal.recommendation) {
+      document.body.setAttribute("data-formats-recommendation", requestedModal.recommendation);
+    } else {
+      document.body.removeAttribute("data-formats-recommendation");
+    }
+
+    requestAnimationFrame(function () {
+      openModal(requestedModal.modal);
+
+      try {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("modal");
+        nextUrl.searchParams.delete("recommendation");
+        const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+        window.history.replaceState({}, "", nextPath);
+      } catch {
+        // Preserve the current URL if History API is unavailable.
+      }
+    });
+  }
+
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") {
       return;
@@ -1574,173 +1859,6 @@ export default function initSite() {
     if (menuDrawer.classList.contains("is-open")) {
       setMenuState(false);
     }
-  });
-
-  const testQuestions = [
-    {
-      title: "Где чаще всего возникают разрывы?",
-      options: [
-        { text: "Между руководителями и командами", score: 3 },
-        { text: "Между подразделениями", score: 2 },
-        { text: "Внутри одной команды", score: 1 },
-        { text: "Разрывов почти нет", score: 0 }
-      ]
-    },
-    {
-      title: "Как быстро решения доходят до исполнения?",
-      options: [
-        { text: "Слишком долго", score: 3 },
-        { text: "С переменным успехом", score: 2 },
-        { text: "Обычно в срок", score: 1 },
-        { text: "Почти сразу", score: 0 }
-      ]
-    },
-    {
-      title: "Как команда реагирует на новые инициативы?",
-      options: [
-        { text: "Сопротивление и усталость", score: 3 },
-        { text: "Поддержка частично", score: 2 },
-        { text: "Скорее поддержка", score: 1 },
-        { text: "Высокая вовлеченность", score: 0 }
-      ]
-    },
-    {
-      title: "Насколько системно вы управляете коммуникациями?",
-      options: [
-        { text: "Стихийно и по ситуации", score: 3 },
-        { text: "Есть отдельные элементы", score: 2 },
-        { text: "Есть рабочая модель", score: 1 },
-        { text: "Есть зрелая система", score: 0 }
-      ]
-    }
-  ];
-
-  const testState = {
-    index: 0,
-    answers: []
-  };
-
-  function renderTestQuestion() {
-    const question = testQuestions[testState.index];
-    const selected = testState.answers[testState.index];
-
-    const progress = ((testState.index + 1) / testQuestions.length) * 100;
-    testProgressBar.style.width = String(progress) + "%";
-
-    testQuestionWrap.innerHTML = "";
-
-    const title = document.createElement("p");
-    title.className = "test-question";
-    title.textContent = question.title;
-
-    const optionsWrap = document.createElement("div");
-    optionsWrap.className = "test-options";
-
-    question.options.forEach(function (option, optionIndex) {
-      const optionButton = document.createElement("button");
-      optionButton.className = "test-option" + (selected === optionIndex ? " is-selected" : "");
-      optionButton.textContent = option.text;
-      optionButton.type = "button";
-      optionButton.addEventListener("click", function () {
-        testState.answers[testState.index] = optionIndex;
-        renderTestQuestion();
-      });
-      optionsWrap.appendChild(optionButton);
-    });
-
-    testQuestionWrap.appendChild(title);
-    testQuestionWrap.appendChild(optionsWrap);
-
-    testBackBtn.disabled = testState.index === 0;
-    testNextBtn.disabled = typeof selected !== "number";
-    testNextBtn.textContent = testState.index === testQuestions.length - 1 ? "Показать результат" : "Далее";
-  }
-
-  function renderTestResult() {
-    const totalScore = testState.answers.reduce(function (sum, optionIndex, questionIndex) {
-      const score = testQuestions[questionIndex].options[optionIndex].score;
-      return sum + score;
-    }, 0);
-
-    let recommendation = "Управленческая сессия (2–4 часа)";
-    if (totalScore >= 5 && totalScore <= 8) {
-      recommendation = "Форсайт-сессия (1–2 дня)";
-    }
-    if (totalScore > 8) {
-      recommendation = "Акселерация (1–12 месяцев)";
-    }
-
-    testQuestionWrap.hidden = true;
-    testResult.hidden = false;
-    testResult.textContent = "";
-
-    const title = document.createElement("h4");
-    title.textContent = "Результат готов";
-
-    const recommendationCopy = document.createElement("p");
-    recommendationCopy.appendChild(document.createTextNode("Рекомендуемый формат: "));
-    const recommendationStrong = document.createElement("strong");
-    recommendationStrong.textContent = recommendation;
-    recommendationCopy.appendChild(recommendationStrong);
-
-    const scoreCopy = document.createElement("p");
-    scoreCopy.textContent = "Итоговый балл: " + totalScore + " из 12.";
-
-    testResult.appendChild(title);
-    testResult.appendChild(recommendationCopy);
-    testResult.appendChild(scoreCopy);
-
-    const cta = document.createElement("button");
-    cta.className = "btn btn-primary";
-    cta.textContent = "Обсудить сессию";
-    cta.type = "button";
-    cta.addEventListener("click", function () {
-      closeModal();
-      setTimeout(function () {
-        scrollToTarget("#contacts");
-      }, 220);
-    });
-
-    testResult.appendChild(cta);
-    testBackBtn.style.display = "none";
-    testNextBtn.style.display = "none";
-  }
-
-  function initTest() {
-    testState.index = 0;
-    testState.answers = [];
-
-    testQuestionWrap.hidden = false;
-    testResult.hidden = true;
-    testResult.innerHTML = "";
-
-    testBackBtn.style.display = "inline-flex";
-    testNextBtn.style.display = "inline-flex";
-
-    renderTestQuestion();
-  }
-
-  testBackBtn.addEventListener("click", function () {
-    if (testState.index <= 0) {
-      return;
-    }
-    testState.index -= 1;
-    renderTestQuestion();
-  });
-
-  testNextBtn.addEventListener("click", function () {
-    const selected = testState.answers[testState.index];
-    if (typeof selected !== "number") {
-      return;
-    }
-
-    if (testState.index === testQuestions.length - 1) {
-      renderTestResult();
-      return;
-    }
-
-    testState.index += 1;
-    renderTestQuestion();
   });
 
   function initTrustedNetwork() {
@@ -2058,4 +2176,5 @@ export default function initSite() {
   queueDiamondChartInit();
   queueTrustedNetworkInit();
   syncHeaderVisualState();
+  applyPendingCrossPageScroll();
 }

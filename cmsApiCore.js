@@ -570,6 +570,156 @@ function normalizeHomeMediaSources(content) {
   return changed;
 }
 
+function normalizeFormatsModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultFormatsEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "formats")
+    : null;
+
+  if (!defaultFormatsEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "formats") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    const cleanedBodyHtml = rawBodyHtml
+      .replace(/<p class=["']formats-modal-kicker["'][^>]*>[\s\S]*?<\/p>\s*/i, "")
+      .replace(/<p class=["']section-kicker["'][^>]*>\s*Форматы работы\s*<\/p>\s*/i, "");
+    const isLegacyBody = rawBodyHtml.includes("format-cards") && !rawBodyHtml.includes("format-showcase");
+    const isLegacyTitle = String(entry.title || "").trim() === "Форматы работы";
+    const needsKickerCleanup = cleanedBodyHtml !== rawBodyHtml;
+
+    if (!isLegacyBody && !isLegacyTitle && !needsKickerCleanup) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      title: isLegacyTitle ? defaultFormatsEntry.title : entry.title,
+      bodyHtml: isLegacyBody ? defaultFormatsEntry.bodyHtml : cleanedBodyHtml
+    };
+  });
+
+  return changed;
+}
+
+function normalizeMediaStationReviewsModal(content) {
+  if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
+    return false;
+  }
+
+  const defaultReviewsEntry = Array.isArray(DEFAULT_CONTENT.modals)
+    ? DEFAULT_CONTENT.modals.find((entry) => entry && entry.id === "ms-participants")
+    : null;
+
+  if (!defaultReviewsEntry) {
+    return false;
+  }
+
+  let changed = false;
+  content.modals = content.modals.map((entry) => {
+    if (!entry || entry.id !== "ms-participants") {
+      return entry;
+    }
+
+    const rawBodyHtml = String(entry.bodyHtml || "");
+    const cleanedBodyHtml = rawBodyHtml
+      .replace(/<div class=["']modal-review-media["'][^>]*>\s*<img[^>]*src=["']\/assets\/reviews\/[^"']+\.svg["'][^>]*>\s*<\/div>\s*/gi, "")
+      .replace(/<div class=["']modal-review-media["'][^>]*>\s*<div class=["']modal-review-avatar-empty["'][\s\S]*?<\/div>\s*<\/div>\s*/gi, "");
+    const rawTitle = String(entry.title || "").trim();
+    const needsBodyUpgrade = !rawBodyHtml.includes("modal-review-card");
+    const needsPlaceholderCleanup = cleanedBodyHtml !== rawBodyHtml;
+    const needsTitleUpgrade = rawTitle === "Участники о проекте" || rawTitle === "Отзывы участников";
+
+    if (!needsBodyUpgrade && !needsTitleUpgrade && !needsPlaceholderCleanup) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      title: needsTitleUpgrade ? defaultReviewsEntry.title : entry.title,
+      bodyHtml: needsBodyUpgrade ? defaultReviewsEntry.bodyHtml : cleanedBodyHtml
+    };
+  });
+
+  return changed;
+}
+
+function normalizeHomeIksPillars(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const iks = content.home.iks;
+  if (!iks || typeof iks !== "object" || !Array.isArray(iks.pillars)) {
+    return false;
+  }
+
+  const titleMap = new Map([
+    ["организация", "Организация и процессы"],
+    ["организация и процессы", "Организация и процессы"],
+    ["компетенции", "Компетенции и роли"],
+    ["компетенции и роли", "Компетенции и роли"],
+    ["контент", "Контент и производство"],
+    ["контент и производство", "Контент и производство"],
+    ["охват", "Охват и каналы"],
+    ["охват и каналы", "Охват и каналы"]
+  ]);
+
+  let changed = false;
+  iks.pillars = iks.pillars.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      return item;
+    }
+
+    const fallback = DEFAULT_CONTENT.home.iks.pillars[index];
+    const sourceTitle = String(item.title || item.key || "").trim().toLowerCase();
+    const normalizedTitle = titleMap.get(sourceTitle) || fallback?.title || item.title || item.key;
+    const normalizedKey = titleMap.get(sourceTitle) || fallback?.key || item.key || normalizedTitle;
+
+    if (item.title === normalizedTitle && item.key === normalizedKey) {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      title: normalizedTitle,
+      key: normalizedKey
+    };
+  });
+
+  return changed;
+}
+
+function normalizeHomeExpertHeading(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const expert = content.home.expert;
+  if (!expert || typeof expert !== "object") {
+    return false;
+  }
+
+  if (String(expert.kicker || "").trim() === "Наши эксперты") {
+    return false;
+  }
+
+  expert.kicker = "Наши эксперты";
+  return true;
+}
+
 function normalizeContactsLegalLinks(content) {
   if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
     return false;
@@ -648,7 +798,7 @@ function normalizeActionLimits(content) {
 
   const limits = [
     ["hero", "actions", 3],
-    ["mediaStation", "actions", 3],
+    ["mediaStation", "actions", 1],
     ["iks", "actions", 3],
     ["expert", "actions", 3]
   ];
@@ -664,6 +814,66 @@ function normalizeActionLimits(content) {
       changed = true;
     }
   });
+
+  return changed;
+}
+
+function normalizeMediaStationActions(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  const media = content.home.mediaStation;
+  if (!media || typeof media !== "object") {
+    return false;
+  }
+
+  const currentList = Array.isArray(media.actions) ? media.actions : [];
+  const nextAction = {
+    id: currentList[0]?.id || "ms-action-1",
+    label: "Отзывы о МедиаСтанции",
+    type: "modal",
+    target: "ms-participants",
+    variant: "primary",
+    isPublished: true
+  };
+
+  const changed =
+    currentList.length !== 1 ||
+    JSON.stringify(currentList[0] || null) !== JSON.stringify(nextAction);
+
+  if (changed) {
+    media.actions = [nextAction];
+  }
+
+  return changed;
+}
+
+function normalizeProjectRoutingAndStats(content) {
+  if (!content || typeof content !== "object" || !content.home || typeof content.home !== "object") {
+    return false;
+  }
+
+  let changed = false;
+
+  const commonCta = content.home.common && content.home.common.cta;
+  if (commonCta && typeof commonCta === "object" && String(commonCta.primaryTarget || "").trim() === "/projects") {
+    commonCta.primaryTarget = "#ms";
+    changed = true;
+  }
+
+  const mediaStats =
+    content.home.mediaStation && Array.isArray(content.home.mediaStation.stats)
+      ? content.home.mediaStation.stats
+      : null;
+  if (mediaStats && mediaStats[0] && mediaStats[0].label === "участников" && String(mediaStats[0].value || "").trim() === "996") {
+    mediaStats[0].value = "969";
+    changed = true;
+  }
+  if (mediaStats && mediaStats[4] && mediaStats[4].label === "медиапродуктов" && String(mediaStats[4].value || "").trim() === "5200") {
+    mediaStats[4].value = "5 200";
+    changed = true;
+  }
 
   return changed;
 }
@@ -777,6 +987,18 @@ function normalizeState(parsed, securityConfig) {
   normalizeContactsLegalLinks(merged.published);
   normalizeModals(merged.draft);
   normalizeModals(merged.published);
+  normalizeFormatsModal(merged.draft);
+  normalizeFormatsModal(merged.published);
+  normalizeMediaStationReviewsModal(merged.draft);
+  normalizeMediaStationReviewsModal(merged.published);
+  normalizeMediaStationActions(merged.draft);
+  normalizeMediaStationActions(merged.published);
+  normalizeProjectRoutingAndStats(merged.draft);
+  normalizeProjectRoutingAndStats(merged.published);
+  normalizeHomeIksPillars(merged.draft);
+  normalizeHomeIksPillars(merged.published);
+  normalizeHomeExpertHeading(merged.draft);
+  normalizeHomeExpertHeading(merged.published);
   normalizeActionLimits(merged.draft);
   normalizeActionLimits(merged.published);
 
@@ -1093,7 +1315,11 @@ export function createCmsApiHandler(options = {}) {
     try {
       const raw = await fsp.readFile(stateFile, "utf8");
       const parsed = JSON.parse(raw);
-      return normalizeState(parsed, securityConfig);
+      const normalized = normalizeState(parsed, securityConfig);
+      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+        await fsp.writeFile(stateFile, JSON.stringify(normalized, null, 2));
+      }
+      return normalized;
     } catch {
       return normalizeState(createBaseState(), securityConfig);
     }
@@ -1152,6 +1378,10 @@ export function createCmsApiHandler(options = {}) {
     };
   }
 
+  function isPublishVersionEntry(entry) {
+    return entry && entry.trigger === "publish";
+  }
+
   function sortVersions(list) {
     return [...list].sort((left, right) => {
       const leftTs = Date.parse(left.createdAt || "") || 0;
@@ -1169,7 +1399,11 @@ export function createCmsApiHandler(options = {}) {
         return [];
       }
       const safe = parsed.map(sanitizeVersionEntry).filter(Boolean);
-      return sortVersions(safe).slice(0, versionLimit);
+      const publishedOnly = safe.filter(isPublishVersionEntry);
+      if (publishedOnly.length !== safe.length) {
+        await writeVersionsIndex(publishedOnly);
+      }
+      return sortVersions(publishedOnly).slice(0, versionLimit);
     } catch {
       return [];
     }
@@ -1177,7 +1411,7 @@ export function createCmsApiHandler(options = {}) {
 
   async function writeVersionsIndex(entries) {
     await ensureVersionsStorage();
-    const prepared = sortVersions(entries.map(sanitizeVersionEntry).filter(Boolean)).slice(0, versionLimit);
+    const prepared = sortVersions(entries.map(sanitizeVersionEntry).filter(isPublishVersionEntry)).slice(0, versionLimit);
     const tempFile = `${versionsIndexFile}.tmp`;
     await fsp.writeFile(tempFile, JSON.stringify(prepared, null, 2));
     await fsp.rename(tempFile, versionsIndexFile);
@@ -1218,7 +1452,7 @@ export function createCmsApiHandler(options = {}) {
     const entry = sanitizeVersionEntry({
       id,
       createdAt,
-      trigger: snapshotMeta.trigger || "draft",
+      trigger: snapshotMeta.trigger || "publish",
       actorId: snapshotMeta.actorId || null,
       actorName: snapshotMeta.actorName || null,
       actorLogin: snapshotMeta.actorLogin || null,
@@ -2018,21 +2252,25 @@ export function createCmsApiHandler(options = {}) {
         normalizeContactsLegalLinks(state.published);
         normalizeModals(state.draft);
         normalizeModals(state.published);
+        normalizeFormatsModal(state.draft);
+        normalizeFormatsModal(state.published);
+        normalizeMediaStationReviewsModal(state.draft);
+        normalizeMediaStationReviewsModal(state.published);
+        normalizeMediaStationActions(state.draft);
+        normalizeMediaStationActions(state.published);
+        normalizeProjectRoutingAndStats(state.draft);
+        normalizeProjectRoutingAndStats(state.published);
+        normalizeHomeIksPillars(state.draft);
+        normalizeHomeIksPillars(state.published);
+        normalizeHomeExpertHeading(state.draft);
+        normalizeHomeExpertHeading(state.published);
         normalizeActionLimits(state.draft);
         normalizeActionLimits(state.published);
         state.publishedAt = nowIso();
         state.updatedAt = nowIso();
         state.lastPublishedBy = session.id;
 
-        const saved = await queueWrite(state, {
-          snapshot: {
-            trigger: "rollback",
-            actorId: session.id,
-            actorName: session.name,
-            actorLogin: session.login,
-            actorRole: session.role
-          }
-        });
+        const saved = await queueWrite(state);
         const versions = await readVersionsIndex();
         sendJson(res, 200, {
           ok: true,
@@ -2088,19 +2326,17 @@ export function createCmsApiHandler(options = {}) {
         normalizeAboutDocuments(state.draft);
         normalizeHomeMediaSources(state.draft);
         normalizeModals(state.draft);
+        normalizeFormatsModal(state.draft);
+        normalizeMediaStationReviewsModal(state.draft);
+        normalizeMediaStationActions(state.draft);
+        normalizeProjectRoutingAndStats(state.draft);
+        normalizeHomeIksPillars(state.draft);
+        normalizeHomeExpertHeading(state.draft);
         normalizeActionLimits(state.draft);
         state.updatedAt = nowIso();
 
-        // Сохраняем версию на каждый meaningful-save: это точка отката для контент-редактора.
-        const saved = await queueWrite(state, {
-          snapshot: {
-            trigger: "draft",
-            actorId: session.id,
-            actorName: session.name,
-            actorLogin: session.login,
-            actorRole: session.role
-          }
-        });
+        // Черновик сохраняем без записи в историю версий.
+        const saved = await queueWrite(state);
         sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;
       }
@@ -2120,6 +2356,12 @@ export function createCmsApiHandler(options = {}) {
         normalizeAboutDocuments(state.published);
         normalizeHomeMediaSources(state.published);
         normalizeModals(state.published);
+        normalizeFormatsModal(state.published);
+        normalizeMediaStationReviewsModal(state.published);
+        normalizeMediaStationActions(state.published);
+        normalizeProjectRoutingAndStats(state.published);
+        normalizeHomeIksPillars(state.published);
+        normalizeHomeExpertHeading(state.published);
         normalizeActionLimits(state.published);
         state.publishedAt = nowIso();
         state.updatedAt = nowIso();
