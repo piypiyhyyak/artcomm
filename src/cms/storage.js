@@ -240,6 +240,36 @@ function normalizeHomeMediaSources(content) {
   return changed;
 }
 
+function normalizeTrustedPartners(content) {
+  if (!content || typeof content !== "object") {
+    return false;
+  }
+
+  const partners = content.home && content.home.trustedPartners;
+  if (!Array.isArray(partners)) {
+    return false;
+  }
+
+  let changed = false;
+  content.home.trustedPartners = partners.map((item) => {
+    if (!item || typeof item !== "object") {
+      return item;
+    }
+
+    if (String(item.logo || "").trim() === "/assets/logos/rosatom.png") {
+      changed = true;
+      return {
+        ...item,
+        logo: "/assets/logos/rosatom-white.png"
+      };
+    }
+
+    return item;
+  });
+
+  return changed;
+}
+
 function normalizeFormatsModal(content) {
   if (!content || typeof content !== "object" || !Array.isArray(content.modals)) {
     return false;
@@ -727,6 +757,8 @@ function normalizeState(parsed) {
   normalizeAboutDocuments(merged.published);
   normalizeHomeMediaSources(merged.draft);
   normalizeHomeMediaSources(merged.published);
+  normalizeTrustedPartners(merged.draft);
+  normalizeTrustedPartners(merged.published);
   normalizeModals(merged.draft);
   normalizeModals(merged.published);
   normalizeFormatsModal(merged.draft);
@@ -914,6 +946,7 @@ export async function fetchPublishedContentFromServer() {
     const merged = mergeWithDefaults(DEFAULT_CONTENT, content);
     normalizeAboutDocuments(merged);
     normalizeHomeMediaSources(merged);
+    normalizeTrustedPartners(merged);
     normalizeModals(merged);
     normalizeFormatsModal(merged);
     normalizeMethodologyModal(merged);
@@ -993,6 +1026,7 @@ export async function publishDraft(userId) {
   state.published = cloneDeep(state.draft);
   normalizeAboutDocuments(state.published);
   normalizeHomeMediaSources(state.published);
+  normalizeTrustedPartners(state.published);
   normalizeModals(state.published);
   normalizeFormatsModal(state.published);
   normalizeMediaStationReviewsModal(state.published);
@@ -1153,6 +1187,7 @@ export function saveDraft(mutator) {
   state.draft = nextDraft;
   normalizeAboutDocuments(state.draft);
   normalizeHomeMediaSources(state.draft);
+  normalizeTrustedPartners(state.draft);
   normalizeModals(state.draft);
   normalizeFormatsModal(state.draft);
   normalizeMediaStationReviewsModal(state.draft);
@@ -1229,6 +1264,9 @@ export async function setUsersRemote(nextUsers) {
       body: { users: prepared },
       allowUnauthorized: true
     });
+    if (result.unauthorized) {
+      throw new Error("unauthorized");
+    }
     if (result.ok && result.payload?.state) {
       const normalized = normalizeState(result.payload.state);
       cacheStateRaw(normalized);
@@ -1419,6 +1457,63 @@ export async function setUserPassword(userId, password, gate = null) {
       },
       allowUnauthorized: true
     });
+    if (result.unauthorized) {
+      throw new Error("unauthorized");
+    }
+    if (result.ok && result.payload?.state) {
+      const normalized = normalizeState(result.payload.state);
+      cacheStateRaw(normalized);
+      return normalized;
+    }
+  } catch (error) {
+    if (error instanceof CmsApiError) {
+      throw new Error(error.code);
+    }
+    throw error;
+  }
+  throw new Error("server_unavailable");
+}
+
+export async function setSecurityCodeword(codeword, gate = null) {
+  const normalizedCodeword = String(codeword || "").trim();
+  if (!normalizedCodeword) {
+    throw new Error("invalid_codeword");
+  }
+
+  if (!gate || typeof gate !== "object") {
+    throw new Error("missing_gate");
+  }
+
+  const authLogin = String(gate.authLogin || "").trim().toLowerCase();
+  const authPassword = String(gate.authPassword || "");
+  const currentCodeword = String(gate.codeword || "").trim();
+  const sessionUserId = String(gate.sessionUserId || "").trim();
+
+  if (!authLogin || !authPassword || !currentCodeword || !sessionUserId) {
+    throw new Error("invalid_gate");
+  }
+
+  if (!hasFetchApi()) {
+    throw new Error("server_unavailable");
+  }
+
+  try {
+    const result = await requestCms("/security-codeword", {
+      method: "POST",
+      body: {
+        codeword: normalizedCodeword,
+        gate: {
+          authLogin,
+          authPassword,
+          codeword: currentCodeword,
+          sessionUserId
+        }
+      },
+      allowUnauthorized: true
+    });
+    if (result.unauthorized) {
+      throw new Error("unauthorized");
+    }
     if (result.ok && result.payload?.state) {
       const normalized = normalizeState(result.payload.state);
       cacheStateRaw(normalized);

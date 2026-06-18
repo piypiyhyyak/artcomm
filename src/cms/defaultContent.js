@@ -96,7 +96,7 @@ export const DEFAULT_CONTENT = {
       maxUrl: "https://max.ru"
     },
     trustedPartners: [
-      { id: "trusted-1", name: "Росатом", logo: "/assets/logos/rosatom.png", x: 13, y: 16, range: 42, isPublished: true },
+      { id: "trusted-1", name: "Росатом", logo: "/assets/logos/rosatom-white.png", x: 13, y: 16, range: 42, isPublished: true },
       { id: "trusted-2", name: "Знание", logo: "/assets/logos/znanie.png", x: 34, y: 14, range: 40, isPublished: true },
       { id: "trusted-3", name: "Сенеж", logo: "/assets/logos/senezh.png", x: 56, y: 22, range: 38, isPublished: true },
       { id: "trusted-4", name: "АСИ", logo: "/assets/logos/asi.png", x: 79, y: 18, range: 44, isPublished: true },

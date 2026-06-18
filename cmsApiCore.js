@@ -127,6 +127,10 @@ function hashEqualsHex(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function isSha256Hex(value) {
+  return /^[a-f0-9]{64}$/i.test(String(value || "").trim());
+}
+
 function parseBooleanFlag(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
     return Boolean(fallback);
@@ -370,8 +374,9 @@ function sanitizeStateForClient(state) {
     return state;
   }
   const users = Array.isArray(state.users) ? state.users.map(sanitizeUserForClient).filter(Boolean) : [];
+  const { security, ...safeState } = state;
   return {
-    ...state,
+    ...safeState,
     users
   };
 }
@@ -470,7 +475,7 @@ function mergeWithDefaults(defaultValue, sourceValue) {
   return sourceValue;
 }
 
-function createBaseState() {
+function createBaseState(securityConfig = null) {
   const content = cloneDeep(DEFAULT_CONTENT);
   return {
     version: CMS_VERSION,
@@ -478,6 +483,9 @@ function createBaseState() {
     updatedAt: nowIso(),
     publishedAt: null,
     users: cloneDeep(DEFAULT_USERS),
+    security: {
+      codewordHash: String(securityConfig?.securityCodewordHash || "").trim().toLowerCase()
+    },
     draft: content,
     published: cloneDeep(content)
   };
@@ -566,6 +574,36 @@ function normalizeHomeMediaSources(content) {
     media.videoMobile = unified;
     media.videoFallback = unified;
   }
+
+  return changed;
+}
+
+function normalizeTrustedPartners(content) {
+  if (!content || typeof content !== "object") {
+    return false;
+  }
+
+  const partners = content.home && content.home.trustedPartners;
+  if (!Array.isArray(partners)) {
+    return false;
+  }
+
+  let changed = false;
+  content.home.trustedPartners = partners.map((item) => {
+    if (!item || typeof item !== "object") {
+      return item;
+    }
+
+    if (String(item.logo || "").trim() === "/assets/logos/rosatom.png") {
+      changed = true;
+      return {
+        ...item,
+        logo: "/assets/logos/rosatom-white.png"
+      };
+    }
+
+    return item;
+  });
 
   return changed;
 }
@@ -878,6 +916,27 @@ function normalizeProjectRoutingAndStats(content) {
   return changed;
 }
 
+function normalizeSecurityState(rawSecurity, securityConfig) {
+  const fallbackHash = String(securityConfig?.securityCodewordHash || "").trim().toLowerCase();
+  const currentHash = String(rawSecurity?.codewordHash || "").trim().toLowerCase();
+  const codewordHash = isSha256Hex(currentHash) ? currentHash : fallbackHash;
+  return {
+    codewordHash
+  };
+}
+
+function getEffectiveSecurityCodewordHash(state, securityConfig) {
+  const stateHash = String(state?.security?.codewordHash || "").trim().toLowerCase();
+  if (isSha256Hex(stateHash)) {
+    return stateHash;
+  }
+  const configHash = String(securityConfig?.securityCodewordHash || "").trim().toLowerCase();
+  if (isSha256Hex(configHash)) {
+    return configHash;
+  }
+  return "";
+}
+
 function normalizeLoadedUsers(rawUsers, securityConfig) {
   const users = Array.isArray(rawUsers) && rawUsers.length ? cloneDeep(rawUsers) : cloneDeep(DEFAULT_USERS);
   const adminLogin = normalizeLogin(securityConfig?.adminLogin || DEFAULT_ADMIN_LOGIN) || DEFAULT_ADMIN_LOGIN;
@@ -964,9 +1023,10 @@ function normalizeUsersForState(nextUsers, securityConfig, existingUsersMap = ne
 }
 
 function normalizeState(parsed, securityConfig) {
-  const fallback = createBaseState();
+  const fallback = createBaseState(securityConfig);
   const sourceUsers = Array.isArray(parsed?.users) && parsed.users.length ? parsed.users : fallback.users;
   const normalizedUsers = normalizeLoadedUsers(sourceUsers, securityConfig);
+  const parsedSecurity = parsed?.security && typeof parsed.security === "object" ? parsed.security : null;
 
   const parsedDraft = parsed?.draft && typeof parsed.draft === "object" ? parsed.draft : null;
   const parsedPublished = parsed?.published && typeof parsed.published === "object" ? parsed.published : null;
@@ -974,6 +1034,7 @@ function normalizeState(parsed, securityConfig) {
   const merged = {
     ...fallback,
     ...parsed,
+    security: normalizeSecurityState(parsedSecurity || fallback.security, securityConfig),
     users: normalizedUsers,
     draft: mergeWithDefaults(fallback.draft, parsedDraft || fallback.draft),
     published: mergeWithDefaults(fallback.published, parsedPublished || parsedDraft || fallback.published)
@@ -983,6 +1044,8 @@ function normalizeState(parsed, securityConfig) {
   normalizeAboutDocuments(merged.published);
   normalizeHomeMediaSources(merged.draft);
   normalizeHomeMediaSources(merged.published);
+  normalizeTrustedPartners(merged.draft);
+  normalizeTrustedPartners(merged.published);
   normalizeContactsLegalLinks(merged.draft);
   normalizeContactsLegalLinks(merged.published);
   normalizeModals(merged.draft);
@@ -1305,7 +1368,7 @@ export function createCmsApiHandler(options = {}) {
   async function ensureStateFile() {
     await fsp.mkdir(dataDir, { recursive: true });
     if (!fs.existsSync(stateFile)) {
-      const initial = normalizeState(createBaseState(), securityConfig);
+      const initial = normalizeState(createBaseState(securityConfig), securityConfig);
       await fsp.writeFile(stateFile, JSON.stringify(initial, null, 2));
     }
   }
@@ -1321,7 +1384,7 @@ export function createCmsApiHandler(options = {}) {
       }
       return normalized;
     } catch {
-      return normalizeState(createBaseState(), securityConfig);
+      return normalizeState(createBaseState(securityConfig), securityConfig);
     }
   }
 
@@ -1908,7 +1971,7 @@ export function createCmsApiHandler(options = {}) {
       return { ok: false, status: 429, error: "locked", retryAt: guard.lockUntil };
     }
 
-    if (!hashEqualsHex(sha256(gate.codeword), securityConfig.securityCodewordHash)) {
+    if (!hashEqualsHex(sha256(gate.codeword), getEffectiveSecurityCodewordHash(state, securityConfig))) {
       const failed = registerSensitiveFailure(req, session.id);
       return { ok: false, status: failed.locked ? 429 : 403, error: failed.locked ? "locked" : "invalid_codeword", retryAt: failed.retryAt };
     }
@@ -2248,6 +2311,8 @@ export function createCmsApiHandler(options = {}) {
         normalizeAboutDocuments(state.published);
         normalizeHomeMediaSources(state.draft);
         normalizeHomeMediaSources(state.published);
+        normalizeTrustedPartners(state.draft);
+        normalizeTrustedPartners(state.published);
         normalizeContactsLegalLinks(state.draft);
         normalizeContactsLegalLinks(state.published);
         normalizeModals(state.draft);
@@ -2325,6 +2390,7 @@ export function createCmsApiHandler(options = {}) {
         state.draft = mergeWithDefaults(DEFAULT_CONTENT, body.draft);
         normalizeAboutDocuments(state.draft);
         normalizeHomeMediaSources(state.draft);
+        normalizeTrustedPartners(state.draft);
         normalizeModals(state.draft);
         normalizeFormatsModal(state.draft);
         normalizeMediaStationReviewsModal(state.draft);
@@ -2355,6 +2421,7 @@ export function createCmsApiHandler(options = {}) {
         state.published = cloneDeep(state.draft);
         normalizeAboutDocuments(state.published);
         normalizeHomeMediaSources(state.published);
+        normalizeTrustedPartners(state.published);
         normalizeModals(state.published);
         normalizeFormatsModal(state.published);
         normalizeMediaStationReviewsModal(state.published);
@@ -2483,6 +2550,42 @@ export function createCmsApiHandler(options = {}) {
         });
         state.updatedAt = nowIso();
 
+        const saved = await queueWrite(state);
+        sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
+        return true;
+      }
+
+      if (pathname === "/api/cms/security-codeword" && method === "POST") {
+        const session = await requireSession(req, res);
+        if (!session) {
+          return true;
+        }
+        if (!canManageUsers(session.role)) {
+          sendJson(res, 403, { ok: false, error: "forbidden" });
+          return true;
+        }
+
+        const body = await readJsonBody(req, { maxBytes: MAX_AUTH_PAYLOAD_BYTES });
+        const codeword = String(body.codeword || "").trim();
+        const gate = body.gate;
+
+        if (!codeword || !gate) {
+          sendJson(res, 400, { ok: false, error: "invalid_payload" });
+          return true;
+        }
+
+        const state = await readState();
+        const validation = await validateSecurityGate(req, state, session, gate);
+        if (!validation.ok) {
+          sendJson(res, validation.status, { ok: false, error: validation.error, retryAt: validation.retryAt || null });
+          return true;
+        }
+
+        state.security = {
+          ...state.security,
+          codewordHash: sha256(codeword)
+        };
+        state.updatedAt = nowIso();
         const saved = await queueWrite(state);
         sendJson(res, 200, { ok: true, state: sanitizeStateForClient(saved) });
         return true;

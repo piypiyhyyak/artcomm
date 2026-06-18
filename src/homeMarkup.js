@@ -11,7 +11,7 @@ const homeMarkup = String.raw`
         </div>
       </a>
       <div class="header-actions">
-        <button class="btn btn-primary" data-scroll="#contacts">Связаться</button>
+        <a class="btn btn-primary" href="#contacts" data-scroll="#contacts">Связаться</a>
         <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Открыть меню" aria-expanded="false" aria-controls="menuDrawer">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <line x1="4" y1="7" x2="20" y2="7"></line>
@@ -35,7 +35,7 @@ const homeMarkup = String.raw`
       <a href="#ms" data-scroll="#ms">Наши проекты</a>
       <a href="/?modal=formats" data-modal="formats">Форматы работы</a>
       <a href="#expert" data-scroll="#expert">Наши эксперты</a>
-      <button data-scroll="#contacts">Контакты</button>
+      <a href="#contacts" data-scroll="#contacts">Контакты</a>
       <a href="/about">Сведения об организации</a>
     </nav>
   </aside>
@@ -411,7 +411,7 @@ const homeMarkup = String.raw`
                 <canvas class="trusted-network-canvas" id="trustedNetworkCanvas" aria-hidden="true"></canvas>
 
                 <span class="trusted-node node-rosatom" data-node data-x="13" data-y="16" data-range="42">
-                  <img src="/assets/logos/rosatom.png" alt="" aria-hidden="true" loading="lazy">
+                  <img src="/assets/logos/rosatom-white.png" alt="" aria-hidden="true" loading="lazy">
                   <span class="trusted-node-name">Росатом</span>
                 </span>
                 <span class="trusted-node node-znanie" data-node data-x="34" data-y="14" data-range="40">

@@ -163,6 +163,13 @@ npm run build
 - `ARTCOMM_CMS_SECURITY_CODEWORD`
 - `ARTCOMM_CMS_PASSWORD_PEPPER`
 
+Если хотите не хранить plaintext-секреты даже в env-файле, используйте:
+
+- `ARTCOMM_CMS_ADMIN_PASSWORD_HASH`
+- `ARTCOMM_CMS_SECURITY_CODEWORD_HASH`
+
+После сохранения кодовое слово в CMS хранится как hash и не уходит в клиент.
+
 Пример заготовки:
 
 ```bash

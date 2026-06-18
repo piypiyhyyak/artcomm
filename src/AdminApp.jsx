@@ -23,6 +23,7 @@ import {
   rollbackToVersion,
   restoreSessionFromServer,
   saveDraft,
+  setSecurityCodeword,
   setUserPassword,
   setUsersRemote,
   verifySensitiveGate
@@ -40,6 +41,30 @@ const NAV_ITEMS = [
   { key: "modals", label: "Модальные окна" },
   { key: "users", label: "Пользователи" }
 ];
+
+const TRANSIENT_FEEDBACK_PREFIXES = [
+  "Список версий обновлён",
+  "Изменения опубликованы",
+  "Изменения пользователя ",
+  "Пользователь ",
+  "Пользователи ",
+  "Черновик перечитан с сервера",
+  "Черновик перечитан из локального кеша",
+  "Вы вышли из системы",
+  "Версия успешно восстановлена",
+  "Версия удалена"
+];
+
+function getTransientFeedbackDelay(message) {
+  const text = String(message || "").trim();
+  if (!text) {
+    return 0;
+  }
+  if (TRANSIENT_FEEDBACK_PREFIXES.some((prefix) => text.startsWith(prefix))) {
+    return 2500;
+  }
+  return 0;
+}
 
 const ACCEPT_IMAGES = "image/*";
 const ACCEPT_DOCS = ".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp";
@@ -2379,9 +2404,11 @@ export default function AdminApp() {
   const [passwordGateForm, setPasswordGateForm] = useState({ login: "", password: "", codeword: "" });
   const [passwordGateUserId, setPasswordGateUserId] = useState("");
   const [passwordGateBusy, setPasswordGateBusy] = useState(false);
+  const [userSaveBusy, setUserSaveBusy] = useState(false);
   const [expandedUsers, setExpandedUsers] = useState({});
   const [versionsState, setVersionsState] = useState({ list: [], limit: null, loadedAt: null, loading: false });
   const [versionActionBusyId, setVersionActionBusyId] = useState("");
+  const feedbackTimerRef = useRef(null);
 
   const draft = cmsState.draft;
   const readonly = !session || !canEdit(session.role);
@@ -2402,6 +2429,34 @@ export default function AdminApp() {
       setTab("dashboard");
     }
   }, [tab, canManageUsersNow]);
+
+  useEffect(() => {
+    setFeedback("");
+  }, [tab]);
+
+  useEffect(() => {
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+
+    const delay = getTransientFeedbackDelay(feedback);
+    if (!delay) {
+      return undefined;
+    }
+
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setFeedback("");
+      feedbackTimerRef.current = null;
+    }, delay);
+
+    return () => {
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+        feedbackTimerRef.current = null;
+      }
+    };
+  }, [feedback]);
 
   useEffect(() => {
     document.body.classList.toggle("modal-open", isPasswordGateOpen);
@@ -2564,7 +2619,7 @@ export default function AdminApp() {
     }
   }
 
-  function updateDraft(mutator, message = "Черновик сохранён") {
+  function updateDraft(mutator, message = "") {
     if (editLocked) {
       return;
     }
@@ -2603,29 +2658,33 @@ export default function AdminApp() {
       login: user?.login || "",
       role: user?.role || ROLE_VIEWER,
       newPassword: "",
-      repeatPassword: ""
+      repeatPassword: "",
+      newCodeword: "",
+      repeatCodeword: ""
     };
   }
 
   function startUserEditing(user) {
-    setEditingUsers((prev) => ({ ...prev, [user.id]: true }));
-    setUserEditDrafts((prev) => ({ ...prev, [user.id]: makeUserDraft(user) }));
+    if (passwordGateUserId) {
+      closePasswordGate();
+    }
+    setEditingUsers({});
+    setUserEditDrafts({});
+    setPasswordGateUserId(user.id);
+    setPasswordGateForm({
+      login: session?.login || "",
+      password: "",
+      codeword: ""
+    });
+    setFeedback("");
   }
 
   function cancelUserEditing(userId) {
-    setEditingUsers((prev) => {
-      const next = { ...prev };
-      delete next[userId];
-      return next;
-    });
-    setUserEditDrafts((prev) => {
-      const next = { ...prev };
-      delete next[userId];
-      return next;
-    });
-    if (passwordGateUserId === userId) {
-      closePasswordGate();
-    }
+    setEditingUsers({});
+    setUserEditDrafts({});
+    setPasswordGateUserId("");
+    setPasswordGateForm({ login: "", password: "", codeword: "" });
+    setFeedback("");
   }
 
   function patchUserDraft(userId, patch) {
@@ -2638,25 +2697,34 @@ export default function AdminApp() {
     });
   }
 
-  function openPasswordGate(user) {
-    if (!editingUsers[user.id]) {
-      setFeedback("Сначала нажмите «Редактировать»");
+  const activeEditingUserId = Object.keys(editingUsers).find((id) => editingUsers[id]) || "";
+  const activeEditingUser = activeEditingUserId ? cmsState.users.find((user) => user.id === activeEditingUserId) : null;
+  const activeEditingUserDraft = activeEditingUser ? userEditDrafts[activeEditingUser.id] || makeUserDraft(activeEditingUser) : null;
+
+  async function saveUserEditing() {
+    if (!activeEditingUser || !activeEditingUserDraft || !session) {
+      return;
+    }
+    if (userSaveBusy) {
       return;
     }
 
-    const draftUser = userEditDrafts[user.id];
-    if (!draftUser) {
-      setFeedback("Не найден черновик редактирования пользователя");
-      return;
-    }
-
-    const nextName = String(draftUser.name || "").trim();
-    const nextLogin = String(draftUser.login || "").trim();
-    const nextPassword = String(draftUser.newPassword || "").trim();
-    const repeatPassword = String(draftUser.repeatPassword || "").trim();
+    const isOwnAccount = activeEditingUser.id === session.id;
+    const nextName = String(activeEditingUserDraft.name || "").trim();
+    const nextLogin = String(activeEditingUserDraft.login || "").trim().toLowerCase();
+    const nextRole = isOwnAccount ? activeEditingUser.role : activeEditingUserDraft.role || ROLE_VIEWER;
+    const nextPassword = String(activeEditingUserDraft.newPassword || "").trim();
+    const repeatPassword = String(activeEditingUserDraft.repeatPassword || "").trim();
+    const nextCodeword = String(activeEditingUserDraft.newCodeword || "").trim();
+    const repeatCodeword = String(activeEditingUserDraft.repeatCodeword || "").trim();
 
     if (!nextName || !nextLogin) {
       setFeedback("Заполните ФИО и логин");
+      return;
+    }
+
+    if (isOwnAccount && activeEditingUserDraft.role !== activeEditingUser.role) {
+      setFeedback("Свою роль менять нельзя");
       return;
     }
 
@@ -2671,103 +2739,45 @@ export default function AdminApp() {
       }
     }
 
-    const isDemotingAdmin = user.role === ROLE_ADMIN && draftUser.role !== ROLE_ADMIN;
-    if (isDemotingAdmin) {
-      const adminsLeft = cmsState.users.filter((item) => item.role === ROLE_ADMIN && item.id !== user.id).length;
-      if (adminsLeft < 1) {
-        setFeedback("В системе должен оставаться минимум один администратор");
+    if (nextCodeword || repeatCodeword) {
+      if (nextCodeword !== repeatCodeword) {
+        setFeedback("Кодовое слово и подтверждение не совпадают");
         return;
       }
     }
 
-    setPasswordGateForm((prev) => ({
-      login: prev.login || session?.login || "",
-      password: "",
-      codeword: ""
-    }));
-    setPasswordGateUserId(user.id);
-  }
-
-  function closePasswordGate() {
-    if (passwordGateBusy) {
-      return;
-    }
-    setPasswordGateUserId("");
-    setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
-  }
-
-  async function confirmPasswordGate() {
-    if (!passwordGateTargetUser || !session) {
-      closePasswordGate();
-      return;
-    }
-
-    const draftUser = userEditDrafts[passwordGateTargetUser.id];
-    if (!draftUser || !editingUsers[passwordGateTargetUser.id]) {
-      setFeedback("Сначала включите режим редактирования пользователя");
-      return;
-    }
-
-    const nextName = String(draftUser.name || "").trim();
-    const nextLogin = String(draftUser.login || "").trim().toLowerCase();
-    const nextRole = draftUser.role || ROLE_VIEWER;
-    const nextPassword = String(draftUser.newPassword || "").trim();
-    const repeatPassword = String(draftUser.repeatPassword || "").trim();
-
-    if (!nextName || !nextLogin) {
-      setFeedback("Заполните ФИО и логин");
-      return;
-    }
-    if (nextPassword || repeatPassword) {
-      if (nextPassword !== repeatPassword) {
-        setFeedback("Пароль и подтверждение не совпадают");
-        return;
-      }
-      if (!isPasswordStrongEnough(nextPassword)) {
-        setFeedback("Пароль должен содержать минимум 10 символов, буквы и цифры");
-        return;
-      }
-    }
-    if (!passwordGateForm.login || !passwordGateForm.password || !passwordGateForm.codeword) {
-      setFeedback("Заполните все поля подтверждения безопасности");
-      return;
-    }
-
-    setPasswordGateBusy(true);
+    setUserSaveBusy(true);
     try {
-      await verifySensitiveGate({
+      const confirmationGate = {
         authLogin: passwordGateForm.login.trim(),
         authPassword: passwordGateForm.password,
         codeword: passwordGateForm.codeword.trim(),
         sessionUserId: session.id
-      });
-
+      };
+      const successMessage = `Изменения пользователя «${nextName || nextLogin}» сохранены`;
       let nextState = await updateUsers((nextUsers) => {
-        const idx = nextUsers.findIndex((item) => item.id === passwordGateTargetUser.id);
+        const idx = nextUsers.findIndex((item) => item.id === activeEditingUser.id);
         if (idx >= 0) {
           nextUsers[idx].name = nextName;
           nextUsers[idx].login = nextLogin;
           nextUsers[idx].role = nextRole;
         }
         return nextUsers;
-      }, `Изменения пользователя «${nextName || nextLogin}» сохранены`);
+      });
       if (!nextState) {
         return;
       }
 
       if (nextPassword) {
-        nextState = await setUserPassword(passwordGateTargetUser.id, nextPassword, {
-          authLogin: passwordGateForm.login.trim(),
-          authPassword: passwordGateForm.password,
-          codeword: passwordGateForm.codeword.trim(),
-          sessionUserId: session.id
-        });
-        syncState(nextState, `Изменения пользователя «${nextName || nextLogin}» сохранены`);
+        nextState = await setUserPassword(activeEditingUser.id, nextPassword, confirmationGate);
       }
 
-      cancelUserEditing(passwordGateTargetUser.id);
-      setPasswordGateUserId("");
-      setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
+      if (nextCodeword) {
+        nextState = await setSecurityCodeword(nextCodeword, confirmationGate);
+      }
+
+      cancelUserEditing(activeEditingUser.id);
+      syncState(nextState, successMessage);
     } catch (error) {
       const code = error instanceof Error ? error.message : "user_update_failed";
       if (code === "invalid_codeword") {
@@ -2784,6 +2794,59 @@ export default function AdminApp() {
         setFeedback("Сессия истекла. Войдите снова");
       } else {
         setFeedback("Не удалось сохранить изменения пользователя");
+      }
+    } finally {
+      setUserSaveBusy(false);
+    }
+  }
+
+  function closePasswordGate() {
+    if (passwordGateBusy) {
+      return;
+    }
+    setPasswordGateUserId("");
+    setPasswordGateForm((prev) => ({ ...prev, password: "", codeword: "" }));
+  }
+
+  async function confirmPasswordGate() {
+    if (!passwordGateTargetUser || !session) {
+      closePasswordGate();
+      return;
+    }
+
+    if (!passwordGateForm.login || !passwordGateForm.password || !passwordGateForm.codeword) {
+      setFeedback("Заполните все поля подтверждения безопасности");
+      return;
+    }
+
+    setPasswordGateBusy(true);
+    try {
+      await verifySensitiveGate({
+        authLogin: passwordGateForm.login.trim(),
+        authPassword: passwordGateForm.password,
+        codeword: passwordGateForm.codeword.trim(),
+        sessionUserId: session.id
+      });
+      setEditingUsers({ [passwordGateTargetUser.id]: true });
+      setUserEditDrafts({ [passwordGateTargetUser.id]: makeUserDraft(passwordGateTargetUser) });
+      setPasswordGateUserId("");
+      setFeedback("");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "user_update_failed";
+      if (code === "invalid_codeword") {
+        setFeedback("Неверное кодовое слово");
+      } else if (code === "invalid_auth") {
+        setFeedback("Повторная авторизация не пройдена");
+      } else if (code === "forbidden") {
+        setFeedback("Подтверждение должно быть выполнено под текущей админ-учёткой администратора");
+      } else if (code === "locked") {
+        setFeedback("Слишком много неудачных попыток подтверждения. Подождите и повторите.");
+      } else if (code === "password_too_short" || code === "password_missing_letter" || code === "password_missing_digit") {
+        setFeedback("Новый пароль не соответствует требованиям: минимум 10 символов, буквы и цифры.");
+      } else if (code === "unauthorized") {
+        setFeedback("Сессия истекла. Войдите снова");
+      } else {
+        setFeedback("Не удалось открыть редактор пользователя");
       }
     } finally {
       setPasswordGateBusy(false);
@@ -4799,145 +4862,86 @@ export default function AdminApp() {
           ) : null}
 
           {tab === "users" && canManageUsersNow ? (
-            <Panel title="Пользователи" subtitle="Роли и безопасная смена паролей">
-              <p className="ap-feedback ap-feedback-muted">Для смены пароля и другой личной информации нажмите «Сохранить изменения» в карточке пользователя и подтвердите действие в модальном окне.</p>
+            <Panel title="Пользователи" subtitle="Базовая информация">
 
               <div className="ap-list">
                 {cmsState.users.map((user, index) => {
                   const isOpen = expandedUsers[user.id] ?? index === 0;
-                  const isEditing = Boolean(editingUsers[user.id]);
-                  const userDraft = userEditDrafts[user.id] || makeUserDraft(user);
                   return (
                     <article key={user.id} className="ap-item ap-user-item">
-                        <button
-                          type="button"
-                          className={`ap-accordion-btn${isOpen ? " is-open" : ""}`}
-                          onClick={() => toggleUserExpanded(user.id, isOpen)}
-                        >
-                          <span className="ap-accordion-title">{user.name || `Пользователь ${index + 1}`}</span>
-                          <span className="ap-accordion-meta">{user.login} · {ROLE_LABELS[user.role]}</span>
-                          <span className="ap-accordion-icon" aria-hidden="true">{isOpen ? "−" : "+"}</span>
-                        </button>
+                      <button
+                        type="button"
+                        className={`ap-accordion-btn${isOpen ? " is-open" : ""}`}
+                        onClick={() => toggleUserExpanded(user.id, isOpen)}
+                      >
+                        <span className="ap-accordion-title">{user.name || `Пользователь ${index + 1}`}</span>
+                        <span className="ap-accordion-meta">
+                          {user.login} · {ROLE_LABELS[user.role]}
+                        </span>
+                        <span className="ap-accordion-icon" aria-hidden="true">{isOpen ? "−" : "+"}</span>
+                      </button>
 
-                        {isOpen ? (
-                          <div className="ap-item-body ap-item-doc">
-                            <div className="ap-item-fields">
-                              <div className="ap-grid ap-grid-4">
-                                <Field
-                                  label="ФИО"
-                                  value={isEditing ? userDraft.name : user.name}
-                                  disabled={!isEditing}
-                                  onChange={(event) => patchUserDraft(user.id, { name: event.target.value })}
-                                />
-                                <Field
-                                  label="Логин"
-                                  value={isEditing ? userDraft.login : user.login}
-                                  disabled={!isEditing}
-                                  onChange={(event) => patchUserDraft(user.id, { login: event.target.value })}
-                                />
-                                <Field
-                                  label="Новый пароль"
-                                  type="password"
-                                  value={isEditing ? userDraft.newPassword : ""}
-                                  disabled={!isEditing}
-                                  onChange={(event) => patchUserDraft(user.id, { newPassword: event.target.value })}
-                                />
-                                <Field
-                                  label="Повторите пароль"
-                                  type="password"
-                                  value={isEditing ? userDraft.repeatPassword : ""}
-                                  disabled={!isEditing}
-                                  onChange={(event) => patchUserDraft(user.id, { repeatPassword: event.target.value })}
-                                />
-                              </div>
+                      {isOpen ? (
+                        <div className="ap-item-body ap-item-doc">
+                          <div className="ap-item-fields">
+                            <div className="ap-grid ap-grid-3 ap-user-summary">
+                              <Field label="ФИО" value={user.name} disabled />
+                              <Field label="Логин" value={user.login} disabled />
+                              <Field label="Роль" value={ROLE_LABELS[user.role]} disabled />
+                            </div>
 
-                              <div className="ap-user-footer">
-                                <label className="ap-field ap-role-field">
-                                  <span>Роль</span>
-                                  <select
-                                    value={isEditing ? userDraft.role : user.role}
-                                    disabled={!isEditing}
-                                    onChange={(event) => {
-                                      const nextRole = event.target.value;
-                                      patchUserDraft(user.id, { role: nextRole });
-                                    }}
-                                  >
-                                    <option value={ROLE_ADMIN}>Администратор</option>
-                                    <option value={ROLE_EDITOR}>Редактор</option>
-                                    <option value={ROLE_VIEWER}>Наблюдатель</option>
-                                  </select>
-                                </label>
+                            <div className="ap-user-footer">
+                              <div className="ap-item-actions ap-user-actions">
+                                <button
+                                  type="button"
+                                  className="ap-btn ap-btn-ghost"
+                                  onClick={() => startUserEditing(user)}
+                                >
+                                  Редактировать
+                                </button>
 
-                                <div className="ap-item-actions ap-user-actions">
-                                  {isEditing ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="ap-btn ap-btn-ghost"
-                                        onClick={() => cancelUserEditing(user.id)}
-                                      >
-                                        Отменить
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="ap-btn ap-btn-primary"
-                                        onClick={() => openPasswordGate(user)}
-                                      >
-                                        Сохранить изменения
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="ap-btn ap-btn-ghost"
-                                      onClick={() => startUserEditing(user)}
-                                    >
-                                      Редактировать
-                                    </button>
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    className="ap-btn ap-btn-danger"
-                                    onClick={async () => {
-                                      if (session && user.id === session.id) {
-                                        setFeedback("Нельзя удалить текущую активную учётную запись");
-                                        return;
-                                      }
-                                      const nextUsers = cmsState.users.filter((_, idx) => idx !== index);
-                                      const adminCount = nextUsers.filter((item) => item.role === ROLE_ADMIN).length;
-                                      if (adminCount < 1) {
-                                        setFeedback("Нельзя удалить последнюю учётную запись администратора");
-                                        return;
-                                      }
-                                      await updateUsers(() => nextUsers, "Пользователь удалён");
-                                      setUserEditDrafts((prev) => {
-                                        const next = { ...prev };
-                                        delete next[user.id];
-                                        return next;
-                                      });
-                                      setEditingUsers((prev) => {
-                                        const next = { ...prev };
-                                        delete next[user.id];
-                                        return next;
-                                      });
-                                      setExpandedUsers((prev) => {
-                                        const next = { ...prev };
-                                        delete next[user.id];
-                                        return next;
-                                      });
-                                      if (passwordGateUserId === user.id) {
-                                        closePasswordGate();
-                                      }
-                                    }}
-                                  >
-                                    Удалить
-                                  </button>
-                                </div>
+                                <button
+                                  type="button"
+                                  className="ap-btn ap-btn-danger"
+                                  onClick={async () => {
+                                    if (session && user.id === session.id) {
+                                      setFeedback("Нельзя удалить текущую активную учётную запись");
+                                      return;
+                                    }
+                                    const nextUsers = cmsState.users.filter((_, idx) => idx !== index);
+                                    const adminCount = nextUsers.filter((item) => item.role === ROLE_ADMIN).length;
+                                    if (adminCount < 1) {
+                                      setFeedback("Нельзя удалить последнюю учётную запись администратора");
+                                      return;
+                                    }
+                                    await updateUsers(() => nextUsers, "Пользователь удалён");
+                                    setUserEditDrafts((prev) => {
+                                      const next = { ...prev };
+                                      delete next[user.id];
+                                      return next;
+                                    });
+                                    setEditingUsers((prev) => {
+                                      const next = { ...prev };
+                                      delete next[user.id];
+                                      return next;
+                                    });
+                                    setExpandedUsers((prev) => {
+                                      const next = { ...prev };
+                                      delete next[user.id];
+                                      return next;
+                                    });
+                                    if (passwordGateUserId === user.id) {
+                                      closePasswordGate();
+                                    }
+                                  }}
+                                >
+                                  Удалить
+                                </button>
                               </div>
                             </div>
                           </div>
-                        ) : null}
+                        </div>
+                      ) : null}
                     </article>
                   );
                 })}
@@ -4957,7 +4961,7 @@ export default function AdminApp() {
                       createdAt: new Date().toISOString()
                     }
                   ];
-                  await updateUsers(() => nextUsers, "Пользователь добавлен. Задайте пароль через «Редактировать»");
+                  await updateUsers(() => nextUsers, "Пользователь добавлен");
                 }}
               >
                 <span>+</span>
@@ -4970,13 +4974,110 @@ export default function AdminApp() {
       </div>
       </main>
 
+      {activeEditingUser && activeEditingUserDraft ? (
+        <div className="ap-modal-layer" role="dialog" aria-modal="true" aria-labelledby="user-editor-title">
+          <div className="ap-modal-overlay" onClick={() => cancelUserEditing(activeEditingUser.id)} />
+          <section className="ap-modal-card ap-user-editor-modal">
+            <header className="ap-modal-head">
+              <h3 id="user-editor-title">Редактирование пользователя</h3>
+            </header>
+
+            <div className="ap-modal-body">
+              <p className="ap-modal-user">
+                Пользователь: <strong>{activeEditingUser.name || activeEditingUser.login || "—"}</strong>
+              </p>
+
+              <div className="ap-grid ap-user-editor-grid">
+                <Field
+                  label="ФИО"
+                  value={activeEditingUserDraft.name}
+                  autoComplete="name"
+                  onChange={(event) => patchUserDraft(activeEditingUser.id, { name: event.target.value })}
+                />
+                <Field
+                  label="Логин"
+                  value={activeEditingUserDraft.login}
+                  autoComplete="username"
+                  onChange={(event) => patchUserDraft(activeEditingUser.id, { login: event.target.value })}
+                />
+                {activeEditingUser.id === session.id ? (
+                  <Field label="Роль" value={ROLE_LABELS[activeEditingUser.role] || activeEditingUser.role} disabled />
+                ) : (
+                  <label className="ap-field ap-role-field">
+                    <span>Роль</span>
+                    <select
+                      value={activeEditingUserDraft.role}
+                      onChange={(event) => patchUserDraft(activeEditingUser.id, { role: event.target.value })}
+                    >
+                      {Object.entries(ROLE_LABELS).map(([roleKey, roleLabel]) => (
+                        <option key={roleKey} value={roleKey}>
+                          {roleLabel}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              <div className="ap-grid ap-grid-2 ap-user-password-grid">
+                <Field
+                  label="Новый пароль"
+                  type="password"
+                  value={activeEditingUserDraft.newPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => patchUserDraft(activeEditingUser.id, { newPassword: event.target.value })}
+                />
+                <Field
+                  label="Повторите пароль"
+                  type="password"
+                  value={activeEditingUserDraft.repeatPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => patchUserDraft(activeEditingUser.id, { repeatPassword: event.target.value })}
+                />
+              </div>
+
+              <div className="ap-grid ap-grid-2 ap-user-password-grid">
+                <Field
+                  label="Новое кодовое слово"
+                  type="password"
+                  value={activeEditingUserDraft.newCodeword}
+                  autoComplete="new-password"
+                  onChange={(event) => patchUserDraft(activeEditingUser.id, { newCodeword: event.target.value })}
+                />
+                <Field
+                  label="Повторите кодовое слово"
+                  type="password"
+                  value={activeEditingUserDraft.repeatCodeword}
+                  autoComplete="new-password"
+                  onChange={(event) => patchUserDraft(activeEditingUser.id, { repeatCodeword: event.target.value })}
+                />
+              </div>
+            </div>
+
+            <footer className="ap-modal-actions">
+              <button
+                type="button"
+                className="ap-btn ap-btn-ghost"
+                disabled={userSaveBusy}
+                onClick={() => cancelUserEditing(activeEditingUser.id)}
+              >
+                Отмена
+              </button>
+              <button type="button" className="ap-btn ap-btn-primary" disabled={userSaveBusy} onClick={() => void saveUserEditing()}>
+                {userSaveBusy ? "Сохраняем..." : "Сохранить изменения"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
       {isPasswordGateOpen ? (
         <div className="ap-modal-layer" role="dialog" aria-modal="true" aria-labelledby="password-gate-title">
           <div className="ap-modal-overlay" onClick={closePasswordGate} />
           <section className="ap-modal-card">
             <header className="ap-modal-head">
-              <h3 id="password-gate-title">Подтвердите сохранение изменений</h3>
-              <p>Введите текущий логин администратора, пароль и кодовое слово.</p>
+              <h3 id="password-gate-title">Подтвердите доступ к редактированию</h3>
+              <p>Введите текущий логин администратора, пароль и кодовое слово подтверждения.</p>
             </header>
 
             <div className="ap-modal-body">
@@ -4998,7 +5099,7 @@ export default function AdminApp() {
                   onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, password: event.target.value }))}
                 />
                 <Field
-                  label="Кодовое слово"
+                  label="Кодовое слово подтверждения"
                   type="password"
                   value={passwordGateForm.codeword}
                   onChange={(event) => setPasswordGateForm((prev) => ({ ...prev, codeword: event.target.value }))}
@@ -5018,7 +5119,7 @@ export default function AdminApp() {
                   void confirmPasswordGate();
                 }}
               >
-                {passwordGateBusy ? "Проверяем..." : "Сохранить изменения"}
+                {passwordGateBusy ? "Проверяем..." : "Открыть редактор"}
               </button>
             </footer>
           </section>
